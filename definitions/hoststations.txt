@@ -1,0 +1,8 @@
+vehicle = 56   ; Resistance Host Station
+vehicle = 57   ; Turantul II
+vehicle = 58   ; Myko Station
+vehicle = 59   ; Turantul I
+vehicle = 60   ; Taerkasten Flying Fortress
+vehicle = 61   ; Sulgogar Queen
+vehicle = 62   ; Black Sect Station
+vehicle = 132  ; HS-Drone
