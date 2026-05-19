@@ -17,7 +17,9 @@ pip install pillow
 
 Launch the editor:
 
-Open the terminal inside Sektor main folder and run    python editor.py
+Open the terminal inside Sektor main folder and run:
+
+python editor.py
 
 Project status:
 
