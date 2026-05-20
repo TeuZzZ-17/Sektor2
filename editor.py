@@ -8,7 +8,7 @@ import platform
 import subprocess
 
 # --- CONFIGURATION & CONSTANTS ---
-DEFAULT_W, DEFAULT_H = 40, 40
+DEFAULT_W, DEFAULT_H = 15, 15
 DEFAULT_HGT = 0x7F
 # Height Constraints (+/- 30 from 0x7F)
 HGT_MIN = 0x61 # 97
@@ -68,8 +68,24 @@ class SektorEditor:
         # 2. State & Data
         self.mw, self.mh = DEFAULT_W, DEFAULT_H
         self.zoom_m, self.zoom_p = 64, 64
+        self.zoom_m_min = 32
+        self.zoom_m_max = 192
+        self.zoom_m_step = 8
         self.mode = "TYPE"
         self.clear_view = False
+        self.left_panel_width = 460
+        self.left_panel_min_width = 260
+        self.left_panel_max_width = 1200
+        self.min_map_area_width = 700
+        self.left_resize_handle_width = 10
+        self._left_resize_start_x = 0
+        self._left_resize_start_width = self.left_panel_width
+        self._left_resizing = False
+        self._palette_resize_refresh_pending = False
+        self._map_layout_refresh_pending = False
+        self.space_pan_active = False
+        self._map_panning = False
+        self._map_pan_source = None
 
         # LEVEL INFO
         self.lvl_info = {
@@ -315,19 +331,37 @@ class SektorEditor:
 
     def build_gui(self):
         # MOD: Removed PanedWindow to prevent Sash/Button glitch. Using Frames.
-        f_main = tk.Frame(self.root, bg="#222")
-        f_main.pack(fill=tk.BOTH, expand=True)
+        self.f_main = tk.Frame(self.root, bg="#222")
+        self.f_main.pack(fill=tk.BOTH, expand=True)
 
-        f_left = tk.Frame(f_main, bg="#1a1a1a", width=460)
-        f_left.pack(side=tk.LEFT, fill=tk.Y, padx=0, pady=0)
-        f_left.pack_propagate(False) # Force width
+        self.f_left = tk.Frame(self.f_main, bg="#1a1a1a", width=self.left_panel_width)
+        self.f_left.pack(side=tk.LEFT, fill=tk.Y, padx=0, pady=0)
+        self.f_left.pack_propagate(False) # Force width
 
-        f_right = tk.Frame(f_main, bg="#000")
-        f_right.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.left_resize_handle = tk.Frame(
+            self.f_main,
+            width=self.left_resize_handle_width,
+            bg="#0b1f1f",
+            cursor="sb_h_double_arrow"
+        )
+        self.left_resize_handle.pack(side=tk.LEFT, fill=tk.Y)
+        self.left_resize_grip = tk.Frame(self.left_resize_handle, bg="#19caca", width=2)
+        self.left_resize_grip.pack(fill=tk.Y, expand=True, padx=4, pady=2)
+        self.left_resize_handle.bind("<Enter>", lambda e: self.left_resize_handle.config(bg="#103333"))
+        self.left_resize_handle.bind("<Leave>", lambda e: self.left_resize_handle.config(bg="#0b1f1f"))
+        self.left_resize_handle.bind("<ButtonPress-1>", self.start_left_panel_resize)
+        self.left_resize_handle.bind("<B1-Motion>", self.do_left_panel_resize)
+        self.left_resize_handle.bind("<ButtonRelease-1>", self.stop_left_panel_resize)
+        self.left_resize_grip.bind("<ButtonPress-1>", self.start_left_panel_resize)
+        self.left_resize_grip.bind("<B1-Motion>", self.do_left_panel_resize)
+        self.left_resize_grip.bind("<ButtonRelease-1>", self.stop_left_panel_resize)
+
+        self.f_right = tk.Frame(self.f_main, bg="#000")
+        self.f_right.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
         # --- LEFT PANEL ---
-        tb_pal = tk.Frame(f_left, bg="#2a2a2a", height=36); tb_pal.pack(fill=tk.X)
-        self.lbl_sel = tk.Label(tb_pal, text="SEL: 00", bg="#2a2a2a", fg="#00FFFF", font=("Courier", 12, "bold"), width=15, anchor="w")
+        tb_pal = tk.Frame(self.f_left, bg="#2a2a2a", height=36); tb_pal.pack(fill=tk.X)
+        self.lbl_sel = tk.Label(tb_pal, text="SEL: 00", bg="#2a2a2a", fg="#00FFFF", font=("Courier", 11, "bold"), width=10, anchor="w")
         self.lbl_sel.pack(side=tk.LEFT, padx=5)
 
         # CUSTOM ID LABELS & ENTRY
@@ -354,14 +388,27 @@ class SektorEditor:
         self.btn_zm_p_out.pack(side=tk.RIGHT, padx=2)
         self.btn_zm_p_in.pack(side=tk.RIGHT, padx=2)
 
-        self.cnt_frame = tk.Frame(f_left, bg="#1a1a1a")
+        self.cnt_frame = tk.Frame(self.f_left, bg="#1a1a1a")
         self.cnt_frame.pack(fill=tk.BOTH, expand=True)
         self.cv_pal = tk.Canvas(self.cnt_frame, bg="#1a1a1a", highlightthickness=0)
 
-        self.sb_pal = tk.Scrollbar(self.cnt_frame, command=self.cv_pal.yview, bg=SCROLL_BG, activebackground=SCROLL_ACTIVE, troughcolor='#555')
+        self.sb_pal = tk.Scrollbar(
+            self.cnt_frame,
+            command=self.cv_pal.yview,
+            bg="#00B8B8",
+            activebackground="#3DF0F0",
+            troughcolor="#0f1f1f",
+            width=18,
+            relief=tk.FLAT,
+            borderwidth=0,
+            highlightthickness=0,
+            elementborderwidth=1,
+            activerelief=tk.FLAT,
+            takefocus=0
+        )
         self.cv_pal.config(yscrollcommand=self.sb_pal.set)
         self.cv_pal.bind("<Configure>", self.draw_palette)
-        self.bind_scroll(self.cv_pal)
+        self.bind_palette_scroll_and_zoom()
 
         self.panels = {
             'GATE': tk.Frame(self.cnt_frame, bg="#1a1a1a"),
@@ -375,8 +422,14 @@ class SektorEditor:
         }
 
         # --- RIGHT PANEL (MAP) ---
-        tb_map = tk.Frame(f_right, bg="#2a2a2a", height=50); tb_map.pack(fill=tk.X)
-        tk.Label(tb_map, text="MODE:", bg="#2a2a2a", fg="#aaa").pack(side=tk.LEFT, padx=5)
+        tb_top = tk.Frame(self.f_right, bg="#2a2a2a")
+        tb_top.pack(fill=tk.X)
+        tb_modes = tk.Frame(tb_top, bg="#2a2a2a", height=28)
+        tb_modes.pack(fill=tk.X)
+        tb_actions = tk.Frame(tb_top, bg="#242424", height=30)
+        tb_actions.pack(fill=tk.X)
+
+        tk.Label(tb_modes, text="MODE:", bg="#2a2a2a", fg="#aaa", font=("Arial", 8, "bold")).pack(side=tk.LEFT, padx=(5,3))
         self.btns = {}
 
         modes = [("TYPE","SECTOR","#0066CC"),
@@ -392,42 +445,230 @@ class SektorEditor:
                  ("SCRIPT","SCRIPT","#008080")]
 
         for m, txt, col in modes:
-            b = tk.Button(tb_map, text=txt, bg="#444", fg="white", command=lambda x=m: self.set_mode(x))
-            b.pack(side=tk.LEFT, padx=1); self.btns[m] = (b, col)
+            b = tk.Button(
+                tb_modes,
+                text=txt,
+                bg="#444",
+                fg="white",
+                command=lambda x=m: self.set_mode(x),
+                font=("Arial", 8),
+                padx=3,
+                pady=1
+            )
+            b.pack(side=tk.LEFT, padx=1, pady=2)
+            self.btns[m] = (b, col)
 
-        tk.Frame(tb_map, width=20, bg="#2a2a2a").pack(side=tk.LEFT)
-        actions = [("+", lambda: self.zoom_map(16), "#333"), ("-", lambda: self.zoom_map(-16), "#333"),
-            ("RESET", lambda: self.reset_map(True), "#800000"),
+        actions = [("RESET", lambda: self.reset_map(True), "#800000"),
             ("RESIZE", self.resize_map_dialog, "#663300"),
             ("FILL", self.fill_map, "#333")]
-        for t, cmd, bg in actions: tk.Button(tb_map, text=t, command=cmd, bg=bg, fg="white", font=("Arial",8)).pack(side=tk.LEFT, padx=1)
+        for t, cmd, bg in actions:
+            tk.Button(tb_actions, text=t, command=cmd, bg=bg, fg="white", font=("Arial",8), padx=4, pady=1).pack(side=tk.LEFT, padx=1, pady=2)
 
-        self.btn_cl = tk.Button(tb_map, text="CLEAR VIEW", command=self.toggle_clear, bg="#444", fg="white", font=("Arial",8))
-        self.btn_cl.pack(side=tk.LEFT, padx=5)
+        self.btn_cl = tk.Button(tb_actions, text="CLEAR VIEW", command=self.toggle_clear, bg="#444", fg="white", font=("Arial",8), padx=4, pady=1)
+        self.btn_cl.pack(side=tk.LEFT, padx=(4,2), pady=2)
 
         io_btns = [("CHANGE LEVEL INFO", self.edit_info, "#4B0082"), ("LOAD MAP", self.load_map, "#CC0000"), ("SAVE MAP", self.save_map, "#006600")]
-        for t, cmd, bg in io_btns: tk.Button(tb_map, text=t, command=cmd, bg=bg, fg="white", font=("Arial",8,"bold")).pack(side=tk.LEFT, padx=5)
+        for t, cmd, bg in io_btns:
+            tk.Button(tb_actions, text=t, command=cmd, bg=bg, fg="white", font=("Arial",8,"bold"), padx=4, pady=1).pack(side=tk.LEFT, padx=2, pady=2)
 
-        # SCROLLABLE MAP CONTAINER
-        f_map_container = tk.Frame(f_right, bg="#000")
+        self.btn_new_map = tk.Button(
+            tb_actions,
+            text="NEW MAP",
+            command=self.new_map_dialog,
+            bg="#2FA8FF",
+            fg="white",
+            activebackground="#FFFFFF",
+            activeforeground="black",
+            font=("Arial",8,"bold"),
+            padx=4,
+            pady=1
+        )
+        self.btn_new_map.pack(side=tk.LEFT, padx=2, pady=2)
+
+        # MAP CONTAINER (Panning without visible map scrollbars)
+        f_map_container = tk.Frame(self.f_right, bg="#000")
         f_map_container.pack(fill=tk.BOTH, expand=True)
 
         self.cv_map = tk.Canvas(f_map_container, bg="#000", highlightthickness=0)
-
-        v_scroll = tk.Scrollbar(f_map_container, orient=tk.VERTICAL, command=self.cv_map.yview, bg=SCROLL_BG, activebackground=SCROLL_ACTIVE, troughcolor="#333")
-        h_scroll = tk.Scrollbar(f_map_container, orient=tk.HORIZONTAL, command=self.cv_map.xview, bg=SCROLL_BG, activebackground=SCROLL_ACTIVE, troughcolor="#333")
-
-        self.cv_map.config(yscrollcommand=v_scroll.set, xscrollcommand=h_scroll.set)
-
-        v_scroll.pack(side=tk.RIGHT, fill=tk.Y)
-        h_scroll.pack(side=tk.BOTTOM, fill=tk.X)
         self.cv_map.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.cv_map.bind("<Configure>", self.on_map_canvas_configure)
 
         self.bind_scroll(self.cv_map)
-        self.cv_map.bind("<Button-1>", self.on_click); self.cv_map.bind("<B1-Motion>", self.on_click)
+        self.cv_map.bind("<Button-1>", self.on_map_left_press)
+        self.cv_map.bind("<B1-Motion>", self.on_map_left_drag)
+        self.cv_map.bind("<ButtonRelease-1>", self.on_map_left_release)
         self.cv_map.bind("<Button-3>", self.on_right_click); self.cv_map.bind("<B3-Motion>", self.on_right_click)
-        self.cv_map.bind("<Button-2>", self.pick)
-        self.cv_map.bind("<ButtonRelease-1>", self.on_release)
+        self.cv_map.bind("<ButtonPress-2>", self.start_map_pan_middle)
+        self.cv_map.bind("<B2-Motion>", self.drag_map_pan)
+        self.cv_map.bind("<ButtonRelease-2>", self.stop_map_pan)
+        self.cv_map.bind("<Control-Button-2>", self.pick)
+        self.root.bind_all("<KeyPress-space>", self.on_space_pan_press)
+        self.root.bind_all("<KeyRelease-space>", self.on_space_pan_release)
+
+    def start_left_panel_resize(self, event):
+        self._left_resizing = True
+        self._left_resize_start_x = event.x_root
+        self._left_resize_start_width = self.f_left.winfo_width()
+        self.left_resize_handle.config(bg="#145050")
+
+    def do_left_panel_resize(self, event):
+        if not self._left_resizing:
+            return
+
+        dx = event.x_root - self._left_resize_start_x
+        max_dynamic = self.f_main.winfo_width() - self.left_resize_handle_width - self.min_map_area_width
+        max_allowed = min(self.left_panel_max_width, max_dynamic)
+        if max_allowed < self.left_panel_min_width:
+            max_allowed = self.left_panel_min_width
+        new_width = max(self.left_panel_min_width, min(max_allowed, self._left_resize_start_width + dx))
+
+        if new_width != self.left_panel_width:
+            self.left_panel_width = new_width
+            self.f_left.config(width=new_width)
+            self.schedule_palette_resize_refresh()
+
+    def stop_left_panel_resize(self, event):
+        self._left_resizing = False
+        self.left_resize_handle.config(bg="#103333")
+        self.refresh_palette_layout(force_full=True)
+        self.refresh_map_layout(force_full=True)
+
+    def schedule_palette_resize_refresh(self):
+        if self._palette_resize_refresh_pending:
+            return
+        self._palette_resize_refresh_pending = True
+        self.root.after_idle(self.refresh_palette_layout)
+
+    def refresh_palette_layout(self, force_full=False):
+        self._palette_resize_refresh_pending = False
+        if not hasattr(self, "cv_pal"):
+            return
+
+        y_fraction = 0.0
+        try:
+            y_fraction = self.cv_pal.yview()[0]
+        except:
+            pass
+
+        if force_full:
+            self.root.update_idletasks()
+
+        container_w = self.cnt_frame.winfo_width()
+        sb_w = self.sb_pal.winfo_width() if self.sb_pal.winfo_ismapped() else 0
+        target_w = max(120, container_w - sb_w - 2)
+        self.cv_pal.config(width=target_w)
+
+        self.draw_palette()
+        try:
+            self.cv_pal.yview_moveto(max(0.0, min(1.0, y_fraction)))
+        except:
+            pass
+
+    def on_map_canvas_configure(self, event=None):
+        self.schedule_map_layout_refresh()
+
+    def schedule_map_layout_refresh(self):
+        if self._map_layout_refresh_pending:
+            return
+        self._map_layout_refresh_pending = True
+        self.root.after_idle(self.refresh_map_layout)
+
+    def refresh_map_layout(self, force_full=False):
+        self._map_layout_refresh_pending = False
+        if not hasattr(self, "cv_map"):
+            return
+
+        x_frac = 0.0
+        y_frac = 0.0
+        try:
+            x_frac = self.cv_map.xview()[0]
+            y_frac = self.cv_map.yview()[0]
+        except:
+            pass
+
+        if force_full:
+            self.root.update_idletasks()
+
+        self.draw_grid()
+
+        total_w = max(1, self.mw * self.zoom_m)
+        total_h = max(1, self.mh * self.zoom_m)
+        view_w = max(1, self.cv_map.winfo_width())
+        view_h = max(1, self.cv_map.winfo_height())
+
+        if total_w <= view_w:
+            self.cv_map.xview_moveto(0.0)
+        else:
+            self.cv_map.xview_moveto(max(0.0, min(1.0, x_frac)))
+
+        if total_h <= view_h:
+            self.cv_map.yview_moveto(0.0)
+        else:
+            self.cv_map.yview_moveto(max(0.0, min(1.0, y_frac)))
+
+    def bind_palette_scroll_and_zoom(self):
+        self.cv_pal.bind("<Button-4>", lambda e: self.on_palette_wheel(e, 1))
+        self.cv_pal.bind("<Button-5>", lambda e: self.on_palette_wheel(e, -1))
+        self.cv_pal.bind("<MouseWheel>", self.on_palette_mousewheel)
+
+    def on_palette_mousewheel(self, event):
+        delta = 1 if event.delta > 0 else -1
+        return self.on_palette_wheel(event, delta)
+
+    def on_palette_wheel(self, event, delta_sign):
+        ctrl_pressed = (event.state & 0x4) != 0
+        if ctrl_pressed:
+            self.zoom_pal(16 if delta_sign > 0 else -16)
+        else:
+            self.cv_pal.yview_scroll(-1 if delta_sign > 0 else 1, "units")
+        return "break"
+
+    def on_space_pan_press(self, event):
+        self.space_pan_active = True
+
+    def on_space_pan_release(self, event):
+        self.space_pan_active = False
+        if self._map_panning and self._map_pan_source == "space_left":
+            self.stop_map_pan(event)
+
+    def on_map_left_press(self, event):
+        if self.space_pan_active:
+            return self.start_map_pan(event, source="space_left")
+        return self.on_click(event)
+
+    def on_map_left_drag(self, event):
+        if self._map_panning and self._map_pan_source == "space_left":
+            return self.drag_map_pan(event)
+        return self.on_click(event)
+
+    def on_map_left_release(self, event):
+        if self._map_panning and self._map_pan_source == "space_left":
+            self.stop_map_pan(event)
+            return "break"
+        self.on_release(event)
+
+    def start_map_pan_middle(self, event):
+        return self.start_map_pan(event, source="middle")
+
+    def start_map_pan(self, event, source="middle"):
+        self._map_panning = True
+        self._map_pan_source = source
+        self.cv_map.focus_set()
+        self.cv_map.scan_mark(event.x, event.y)
+        self.cv_map.config(cursor="fleur")
+        return "break"
+
+    def drag_map_pan(self, event):
+        if not self._map_panning:
+            return
+        self.cv_map.scan_dragto(event.x, event.y, gain=1)
+        return "break"
+
+    def stop_map_pan(self, event=None):
+        self._map_panning = False
+        self._map_pan_source = None
+        self.cv_map.config(cursor="")
+        return "break"
 
     def on_release(self, e):
         # Reset Key Dragging
@@ -530,8 +771,8 @@ class SektorEditor:
             self.btn_zm_p_in.pack(side=tk.RIGHT, padx=2)
 
             self.f_custom_inputs.pack(side=tk.LEFT, padx=5)
-            if m == "TYPE": self.lbl_custom_title.config(text="Custom Sector ID:")
-            else: self.lbl_custom_title.config(text="Custom Building ID:")
+            if m == "TYPE": self.lbl_custom_title.config(text="Sector ID:")
+            else: self.lbl_custom_title.config(text="Building ID:")
             
         else:
             self.lbl_sel.pack_forget()
@@ -553,7 +794,7 @@ class SektorEditor:
             self.panels[m].pack(fill=tk.BOTH, expand=True)
         else:
             self.sb_pal.pack(side=tk.RIGHT, fill=tk.Y); self.cv_pal.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-            self.draw_palette()
+            self.refresh_palette_layout(force_full=True)
 
         self.upd_lbl()
         self.draw_grid()
@@ -1264,7 +1505,19 @@ class SektorEditor:
         lb_frame = tk.Frame(p); lb_frame.pack(fill=tk.X, padx=5, pady=5)
         lb = tk.Listbox(lb_frame, height=5, bg="#222", fg="white", selectbackground="#008888", selectforeground="white", font=("Courier", 9))
         lb.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        sb = tk.Scrollbar(lb_frame, command=lb.yview, bg=SCROLL_BG, activebackground=SCROLL_ACTIVE, troughcolor="#444"); sb.pack(side=tk.RIGHT, fill=tk.Y)
+        sb = tk.Scrollbar(
+            lb_frame,
+            command=lb.yview,
+            bg="#00B8B8",
+            activebackground="#3DF0F0",
+            troughcolor="#0f1f1f",
+            width=16,
+            relief=tk.FLAT,
+            borderwidth=0,
+            highlightthickness=0,
+            elementborderwidth=1,
+            activerelief=tk.FLAT
+        ); sb.pack(side=tk.RIGHT, fill=tk.Y)
         lb.config(yscrollcommand=sb.set)
 
         def refresh_list():
@@ -1349,7 +1602,19 @@ class SektorEditor:
         tk.Button(f_cust, text="+ BLG", command=lambda: add_cust_tech('blg'), bg="#444", fg="white", font=("Arial",7)).pack(side=tk.LEFT, padx=2)
 
         self.cv_tech = tk.Canvas(p, bg="#222", highlightthickness=0)
-        self.sb_tech = tk.Scrollbar(p, command=self.cv_tech.yview, bg=SCROLL_BG, activebackground=SCROLL_ACTIVE, troughcolor='#444')
+        self.sb_tech = tk.Scrollbar(
+            p,
+            command=self.cv_tech.yview,
+            bg="#00B8B8",
+            activebackground="#3DF0F0",
+            troughcolor="#0f1f1f",
+            width=16,
+            relief=tk.FLAT,
+            borderwidth=0,
+            highlightthickness=0,
+            elementborderwidth=1,
+            activerelief=tk.FLAT
+        )
         self.cv_tech.configure(yscrollcommand=self.sb_tech.set)
         self.sb_tech.pack(side=tk.RIGHT, fill=tk.Y); self.cv_tech.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self.cv_tech.bind("<Configure>", lambda e: self.draw_tech_list())
@@ -1663,9 +1928,16 @@ class SektorEditor:
         cols = getattr(self, 'mw', DEFAULT_W)
         for r in range(rows):
             for c in range(cols): self.draw_cell(c, r)
+        self.cv_map.config(scrollregion=(0,0,self.mw*self.zoom_m, self.mh*self.zoom_m))
 
     def draw_palette(self, e=None):
-        if self.mode in ["GATE", "ITEM", "TECH", "GEM", "SCRIPT", "SQUAD", "HOST"]: return
+        if self.mode in ["HGT", "GATE", "ITEM", "TECH", "GEM", "SCRIPT", "SQUAD", "HOST"]: return
+
+        previous_y = 0.0
+        try:
+            previous_y = self.cv_pal.yview()[0]
+        except:
+            pass
 
         self.cv_pal.delete("all")
         w = self.cv_pal.winfo_width() or 300
@@ -1705,6 +1977,10 @@ class SektorEditor:
         canvas_h = self.cv_pal.winfo_height()
         if content_h <= canvas_h: self.cv_pal.config(scrollregion=(0, 0, w, canvas_h))
         else: self.cv_pal.config(scrollregion=(0, 0, w, content_h))
+        try:
+            self.cv_pal.yview_moveto(max(0.0, min(1.0, previous_y)))
+        except:
+            pass
 
     # --- CORE LOGIC: THE 1200/700 FORMULA v11.0 ---
     def grid_to_world(self, col, row):
@@ -1723,6 +1999,8 @@ class SektorEditor:
 
     # --- LIVE COORDINATE TRACKER ---
     def on_mouse_move(self, e):
+        if self._map_panning:
+            return
         if self.mode in ["TYPE", "OWN", "BLG", "HGT"]: return
 
         cx = int(self.cv_map.canvasx(e.x)//self.zoom_m)
@@ -2003,7 +2281,7 @@ class SektorEditor:
 
     def zoom_pal(self, d): self.zoom_p = max(32, min(256, self.zoom_p+d)); self.draw_palette()
     def zoom_map(self, d):
-        self.zoom_m = max(48, min(192, self.zoom_m+d))
+        self.zoom_m = max(self.zoom_m_min, min(self.zoom_m_max, self.zoom_m+d))
         self.draw_grid(); self.cv_map.config(scrollregion=(0,0,self.mw*self.zoom_m, self.mh*self.zoom_m))
 
     def toggle_clear(self):
@@ -2011,20 +2289,155 @@ class SektorEditor:
         self.btn_cl.config(bg="#00FF00" if self.clear_view else "#444"); self.draw_grid()
 
     def bind_scroll(self, w):
-        w.bind("<Button-4>", lambda e: w.yview_scroll(-1,"units"))
-        w.bind("<Button-5>", lambda e: w.yview_scroll(1,"units"))
-        w.bind("<MouseWheel>", lambda e: w.yview_scroll(int(-1*(e.delta/120)),"units"))
-        w.bind("<Motion>", self.on_mouse_move)
+        if w == self.cv_map:
+            w.bind("<Button-4>", self.on_map_wheel_linux_up)
+            w.bind("<Button-5>", self.on_map_wheel_linux_down)
+            w.bind("<MouseWheel>", self.on_map_mousewheel)
+            w.bind("<Motion>", self.on_mouse_move)
+        else:
+            w.bind("<Button-4>", lambda e: w.yview_scroll(-1,"units"))
+            w.bind("<Button-5>", lambda e: w.yview_scroll(1,"units"))
+            w.bind("<MouseWheel>", lambda e: w.yview_scroll(int(-1*(e.delta/120)),"units"))
+
+    def on_map_wheel_linux_up(self, event):
+        return self.zoom_map_at_cursor(event, 1)
+
+    def on_map_wheel_linux_down(self, event):
+        return self.zoom_map_at_cursor(event, -1)
+
+    def on_map_mousewheel(self, event):
+        if event.delta > 0:
+            return self.zoom_map_at_cursor(event, 1)
+        if event.delta < 0:
+            return self.zoom_map_at_cursor(event, -1)
+        return "break"
+
+    def zoom_map_at_cursor(self, event, direction):
+        if direction == 0:
+            return "break"
+
+        old_zoom = self.zoom_m
+        new_zoom = max(
+            self.zoom_m_min,
+            min(self.zoom_m_max, old_zoom + (self.zoom_m_step if direction > 0 else -self.zoom_m_step))
+        )
+        if new_zoom == old_zoom:
+            return "break"
+
+        old_total_w = max(1, self.mw * old_zoom)
+        old_total_h = max(1, self.mh * old_zoom)
+
+        anchor_x = self.cv_map.canvasx(event.x)
+        anchor_y = self.cv_map.canvasy(event.y)
+        rel_x = anchor_x / old_total_w
+        rel_y = anchor_y / old_total_h
+
+        self.zoom_m = new_zoom
+        self.draw_grid()
+
+        new_total_w = max(1, self.mw * new_zoom)
+        new_total_h = max(1, self.mh * new_zoom)
+        view_w = max(1, self.cv_map.winfo_width())
+        view_h = max(1, self.cv_map.winfo_height())
+
+        target_canvas_x = rel_x * new_total_w
+        target_canvas_y = rel_y * new_total_h
+        left_px = target_canvas_x - event.x
+        top_px = target_canvas_y - event.y
+
+        if new_total_w > view_w:
+            x_frac = left_px / (new_total_w - view_w)
+            self.cv_map.xview_moveto(max(0.0, min(1.0, x_frac)))
+        else:
+            self.cv_map.xview_moveto(0.0)
+
+        if new_total_h > view_h:
+            y_frac = top_px / (new_total_h - view_h)
+            self.cv_map.yview_moveto(max(0.0, min(1.0, y_frac)))
+        else:
+            self.cv_map.yview_moveto(0.0)
+
+        return "break"
 
     def ask_set(self):
         n = simpledialog.askinteger("Sektor", "Select Set (1-6):", minvalue=1, maxvalue=6, initialvalue=1)
         return f"set{n}" if n else None
 
+    def ask_map_dimensions(self, default_w=DEFAULT_W, default_h=DEFAULT_H):
+        w = simpledialog.askinteger("Sektor", "W:", initialvalue=default_w, minvalue=3)
+        if w is None:
+            return None
+        h = simpledialog.askinteger("Sektor", "H:", initialvalue=default_h, minvalue=3)
+        if h is None:
+            return None
+        return w, h
+
     def ask_dims(self):
-        w = simpledialog.askinteger("Sektor", "W:", initialvalue=DEFAULT_W, minvalue=10)
-        h = simpledialog.askinteger("Sektor", "H:", initialvalue=DEFAULT_H, minvalue=10)
-        if w and h: self.mw, self.mh = w, h; self.reset_map(False)
-        else: self.root.destroy()
+        dims = self.ask_map_dimensions(DEFAULT_W, DEFAULT_H)
+        if dims:
+            w, h = dims
+            self.mw, self.mh = w, h
+            self.reset_map(False)
+        else:
+            self.root.destroy()
+
+    def create_new_map(self, set_folder, width, height):
+        if not os.path.exists(set_folder):
+            messagebox.showerror("Missing Set", f"Folder not found: {set_folder}")
+            return
+
+        set_changed = (set_folder != self.set_folder)
+        self.set_folder = set_folder
+        if set_changed:
+            self.reload_assets()
+        else:
+            self.update_window_title()
+
+        self.current_filename = None
+        self.update_window_title()
+
+        self.mw, self.mh = width, height
+        self.zoom_m = 64
+        self.clear_view = False
+
+        self.lvl_info = {
+            'title': "Untitled Map",
+            'sky': "objects/x7.bas",
+            'mbmap': "MB_53.IFF",
+            'dbmap': "DB_53.IFF",
+            'music': "None",
+            'movie': "None"
+        }
+        self.script_content = ""
+        self.tech = {i: {'veh': [], 'blg': []} for i in range(1, 8)}
+        self.custom_tech_names = {}
+        self.curr_tech_faction = 1
+
+        self.current_gate_slot = 1
+        self.current_item_slot = 1
+        self.current_gem_slot = 1
+        self.current_squad_index = -1
+        self.current_host_index = -1
+        self._drag_squad_idx = -1
+        self._drag_host_idx = -1
+
+        self.current_squad_data = {'owner': 1, 'veh': 1, 'num': 1, 'hidden': False, 'custom_name': None}
+        self.current_host_data = {'owner': 1, 'veh': 56, 'energy': 500000, 'pos_y': -330, 'custom_name': None, 'hidden': False}
+
+        self.reset_map(confirm=False)
+        self.set_mode("TYPE")
+        self.refresh_palette_layout(force_full=True)
+        self.refresh_map_layout(force_full=True)
+
+    def new_map_dialog(self):
+        set_folder = self.ask_set()
+        if not set_folder:
+            return
+        dims = self.ask_map_dimensions(DEFAULT_W, DEFAULT_H)
+        if not dims:
+            return
+        w, h = dims
+        self.create_new_map(set_folder, w, h)
 
     def resize_map_dialog(self):
         w = simpledialog.askinteger("Resize Map", "New Width:", initialvalue=self.mw, minvalue=10)
@@ -2113,7 +2526,19 @@ class SektorEditor:
         lbl_sky_current.pack(side=tk.LEFT)
 
         fr_sky = tk.Frame(win, bg="#333", bd=2, relief="sunken"); fr_sky.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
-        cv_s = tk.Canvas(fr_sky, bg="#111", highlightthickness=0); sb_s = tk.Scrollbar(fr_sky, command=cv_s.yview)
+        cv_s = tk.Canvas(fr_sky, bg="#111", highlightthickness=0); sb_s = tk.Scrollbar(
+            fr_sky,
+            command=cv_s.yview,
+            bg="#00B8B8",
+            activebackground="#3DF0F0",
+            troughcolor="#0f1f1f",
+            width=16,
+            relief=tk.FLAT,
+            borderwidth=0,
+            highlightthickness=0,
+            elementborderwidth=1,
+            activerelief=tk.FLAT
+        )
         cv_s.config(yscrollcommand=sb_s.set); sb_s.pack(side=tk.RIGHT, fill=tk.Y)
         sb_s.config(bg=SCROLL_BG, activebackground=SCROLL_ACTIVE, troughcolor="#444")
         cv_s.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
