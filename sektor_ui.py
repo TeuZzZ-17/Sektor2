@@ -200,14 +200,7 @@ class UIMixin:
         self.cv_map.bind("<Button-1>", self.on_map_left_press)
         self.cv_map.bind("<B1-Motion>", self.on_map_left_drag)
         self.cv_map.bind("<ButtonRelease-1>", self.on_map_left_release)
-<<<<<<< HEAD
         self.cv_map.bind("<Leave>", self.clear_hover_overlay)
-=======
-<<<<<<< HEAD
-=======
-        self.cv_map.bind("<Leave>", self.clear_hover_overlay)
->>>>>>> 9935212 (Refactor code structure for improved readability and maintainability)
->>>>>>> 960ab1aa40a49cce6e2d2ab9956235aab9074263
         self.cv_map.bind("<Button-3>", self.on_right_click); self.cv_map.bind("<B3-Motion>", self.on_right_click)
         self.cv_map.bind("<ButtonPress-2>", self.start_map_pan_middle)
         self.cv_map.bind("<B2-Motion>", self.drag_map_pan)
@@ -1036,10 +1029,12 @@ class UIMixin:
 
         def set_fac(f):
             if self.current_squad_index != -1:
+                cell = self.get_squad_cell(self.current_squad_index)
                 if self.squads[self.current_squad_index]['owner'] != f:
                     self.push_undo_snapshot()
                 self.squads[self.current_squad_index]['owner'] = f
-                self.refresh_squad_list()
+                self.refresh_squad_list(redraw=False)
+                self.redraw_cells(cell)
             else:
                 self.current_squad_data['owner'] = f
             self.btn_squad_fac.config(text=f"{f} ({FACTIONS[f][0]})", fg=FACTIONS[f][1] if FACTIONS[f][1] else "white")
@@ -1069,6 +1064,7 @@ class UIMixin:
 
         def on_veh_change(ev):
             if self.current_squad_index != -1:
+                cell = self.get_squad_cell(self.current_squad_index)
                 val = self.cb_veh.get().strip()
                 match = re.match(r'^(\d+)\s*-\s*(.*)$', val)
                 old_veh = self.squads[self.current_squad_index]['veh']
@@ -1091,7 +1087,8 @@ class UIMixin:
                         self.squads[self.current_squad_index]['veh'] = new_veh
                         self.squads[self.current_squad_index]['custom_name'] = "Custom_Unit"
                     except: pass
-                self.refresh_squad_list()
+                self.refresh_squad_list(redraw=False)
+                self.redraw_cells(cell)
         self.cb_veh.bind("<<ComboboxSelected>>", on_veh_change)
         self.cb_veh.bind("<KeyRelease>", on_veh_change)
 
@@ -1108,10 +1105,12 @@ class UIMixin:
             except: pass
             
             if self.current_squad_index != -1:
+                cell = self.get_squad_cell(self.current_squad_index)
                 if self.squads[self.current_squad_index]['num'] != val:
                     self.push_undo_snapshot()
                 self.squads[self.current_squad_index]['num'] = val
-                self.refresh_squad_list()
+                self.refresh_squad_list(redraw=False)
+                self.redraw_cells(cell)
             else:
                 self.current_squad_data['num'] = val
         self.e_squad_cnt.bind("<KeyRelease>", upd_cnt)
@@ -1123,10 +1122,12 @@ class UIMixin:
         def tog_hid():
             val = self.var_squad_hid.get()
             if self.current_squad_index != -1:
+                cell = self.get_squad_cell(self.current_squad_index)
                 if self.squads[self.current_squad_index]['hidden'] != val:
                     self.push_undo_snapshot()
                 self.squads[self.current_squad_index]['hidden'] = val
-                self.refresh_squad_list() 
+                self.refresh_squad_list(redraw=False)
+                self.redraw_cells(cell)
             else:
                 self.current_squad_data['hidden'] = val
 
@@ -1144,22 +1145,26 @@ class UIMixin:
             sel = self.lb_squads.curselection()
             if not sel: return
             idx = sel[0]
+            cell = self.get_squad_cell(idx)
             self.push_undo_snapshot()
             self.squads.pop(idx)
             self.current_squad_index = -1 
-            self.draw_grid()
-            self.refresh_squad_list()
+            self.invalidate_render_indexes()
+            self.refresh_squad_list(redraw=False)
+            self.redraw_cells(cell)
             self.var_squad_hid.set(self.current_squad_data['hidden'])
 
         tk.Button(f_list, text="[ DELETE SELECTED SQUAD ]", command=delete_selected_squad, bg="#880000", fg="white", font=("Arial", 9, "bold")).pack(fill=tk.X, pady=5)
         self.refresh_squad_list()
 
     def on_squad_select(self, evt):
+        previous_cell = self.get_squad_cell(self.current_squad_index)
         sel = self.lb_squads.curselection()
         if sel:
             idx = sel[0]
             self.current_squad_index = idx
             s = self.squads[idx]
+            selected_cell = self.get_squad_cell(idx)
             
             self.var_squad_hid.set(s['hidden'])
             self.e_squad_cnt.delete(0, tk.END)
@@ -1171,10 +1176,11 @@ class UIMixin:
 
         else:
             self.current_squad_index = -1
+            selected_cell = None
         
-        self.draw_grid()
+        self.redraw_cells(previous_cell, selected_cell)
 
-    def refresh_squad_list(self):
+    def refresh_squad_list(self, redraw=True):
         if not hasattr(self, 'lb_squads') or not self.lb_squads.winfo_exists(): return
         self.lb_squads.delete(0, tk.END)
         for i, s in enumerate(self.squads):
@@ -1191,7 +1197,8 @@ class UIMixin:
                 self.lb_squads.selection_set(i)
                 self.lb_squads.activate(i)
 
-        self.draw_grid()
+        if redraw:
+            self.draw_grid()
 
     def build_host_ui(self):
         p = self.panels['HOST']
@@ -1208,10 +1215,12 @@ class UIMixin:
 
         def set_host_fac(f):
             if self.current_host_index != -1:
+                cell = self.get_host_cell(self.current_host_index)
                 if self.host_stations[self.current_host_index]['owner'] != f:
                     self.push_undo_snapshot()
                 self.host_stations[self.current_host_index]['owner'] = f
-                self.refresh_host_list()
+                self.refresh_host_list(redraw=False)
+                self.redraw_cells(cell)
             else:
                 self.current_host_data['owner'] = f
             
@@ -1242,6 +1251,7 @@ class UIMixin:
 
         def on_host_change(ev):
             if self.current_host_index != -1:
+                cell = self.get_host_cell(self.current_host_index)
                 val = self.cb_host.get().strip()
                 match = re.match(r'^(\d+)\s*-\s*(.*)$', val)
                 old_veh = self.host_stations[self.current_host_index]['veh']
@@ -1261,7 +1271,8 @@ class UIMixin:
                         self.host_stations[self.current_host_index]['veh'] = new_veh
                         self.host_stations[self.current_host_index]['custom_name'] = "Custom_Host"
                     except: pass
-                self.refresh_host_list()
+                self.refresh_host_list(redraw=False)
+                self.redraw_cells(cell)
         self.cb_host.bind("<<ComboboxSelected>>", on_host_change)
         self.cb_host.bind("<KeyRelease>", on_host_change)
 
@@ -1285,6 +1296,7 @@ class UIMixin:
         def upd_host_stats(ev):
             if self.current_host_index != -1:
                 try:
+                    cell = self.get_host_cell(self.current_host_index)
                     new_energy = int(self.e_host_en.get())
                     new_pos_y = int(self.e_host_y.get())
                     curr = self.host_stations[self.current_host_index]
@@ -1292,7 +1304,8 @@ class UIMixin:
                         self.push_undo_snapshot()
                     self.host_stations[self.current_host_index]['energy'] = new_energy
                     self.host_stations[self.current_host_index]['pos_y'] = new_pos_y
-                    self.refresh_host_list()
+                    self.refresh_host_list(redraw=False)
+                    self.redraw_cells(cell)
                 except: pass
             else:
                 try:
@@ -1309,10 +1322,12 @@ class UIMixin:
         def tog_host_hid():
             val = self.var_host_hid.get()
             if self.current_host_index != -1:
+                cell = self.get_host_cell(self.current_host_index)
                 if self.host_stations[self.current_host_index]['hidden'] != val:
                     self.push_undo_snapshot()
                 self.host_stations[self.current_host_index]['hidden'] = val
-                self.refresh_host_list()
+                self.refresh_host_list(redraw=False)
+                self.redraw_cells(cell)
             else:
                 self.current_host_data['hidden'] = val
 
@@ -1330,22 +1345,26 @@ class UIMixin:
             sel = self.lb_hosts.curselection()
             if not sel: return
             idx = sel[0]
+            cell = self.get_host_cell(idx)
             self.push_undo_snapshot()
             self.host_stations.pop(idx)
             self.current_host_index = -1
-            self.draw_grid()
-            self.refresh_host_list()
+            self.invalidate_render_indexes()
+            self.refresh_host_list(redraw=False)
+            self.redraw_cells(cell)
             self.var_host_hid.set(self.current_host_data['hidden'])
 
         tk.Button(f_list, text="[ DELETE SELECTED HOST ]", command=delete_selected_host, bg="#880000", fg="white", font=("Arial", 9, "bold")).pack(fill=tk.X, pady=5)
         self.refresh_host_list()
 
     def on_host_select(self, evt):
+        previous_cell = self.get_host_cell(self.current_host_index)
         sel = self.lb_hosts.curselection()
         if sel:
             idx = sel[0]
             self.current_host_index = idx
             h = self.host_stations[idx]
+            selected_cell = self.get_host_cell(idx)
 
             self.var_host_hid.set(h['hidden'])
             
@@ -1360,9 +1379,10 @@ class UIMixin:
 
         else:
             self.current_host_index = -1
-        self.draw_grid()
+            selected_cell = None
+        self.redraw_cells(previous_cell, selected_cell)
 
-    def refresh_host_list(self):
+    def refresh_host_list(self, redraw=True):
         if not hasattr(self, 'lb_hosts') or not self.lb_hosts.winfo_exists(): return
         self.lb_hosts.delete(0, tk.END)
         for i, h in enumerate(self.host_stations):
@@ -1386,7 +1406,8 @@ class UIMixin:
                 self.lb_hosts.selection_set(i)
                 self.lb_hosts.activate(i)
 
-        self.draw_grid()
+        if redraw:
+            self.draw_grid()
 
     def build_tech_ui(self):
         p = self.panels['TECH']

@@ -7,23 +7,15 @@ import copy
 import re
 import platform
 import subprocess
+import time
 
 from sektor_constants import *
 
 class CanvasMixin:
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
-=======
->>>>>>> 960ab1aa40a49cce6e2d2ab9956235aab9074263
     MAP_BORDER_TAG = "map_outer_border"
     MAP_BORDER_COLOR = "#00FFFF"
     HOVER_TAG = "map_hover_overlay"
     HOVER_COLOR = "#B8F4FF"
-<<<<<<< HEAD
-=======
->>>>>>> 9935212 (Refactor code structure for improved readability and maintainability)
->>>>>>> 960ab1aa40a49cce6e2d2ab9956235aab9074263
 
     OWNER_PANEL_LABELS = {
         0: "Neutral",
@@ -105,11 +97,6 @@ class CanvasMixin:
             final_text = final_text[:-1]
         return final_text, min_font, label_font.measure(final_text)
 
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
-=======
->>>>>>> 960ab1aa40a49cce6e2d2ab9956235aab9074263
     def fit_cell_multiline_text(self, text, sz, min_font=4, max_font=None, padding=8):
         lines = str(text).splitlines() or [str(text)]
         min_font = int(min_font)
@@ -136,10 +123,6 @@ class CanvasMixin:
             fitted_lines.append(fitted_line)
         return "\n".join(fitted_lines), label_font
 
-<<<<<<< HEAD
-=======
->>>>>>> 9935212 (Refactor code structure for improved readability and maintainability)
->>>>>>> 960ab1aa40a49cce6e2d2ab9956235aab9074263
     def draw_cell_label(self, x, y, sz, text, fill_color, text_color, tag, position="bottom"):
         label_text, font_size, text_width = self.fit_label_text(text, sz)
         label_font = self.get_cell_label_font(font_size)
@@ -266,35 +249,139 @@ class CanvasMixin:
             tags=tag
         )
 
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
-=======
->>>>>>> 960ab1aa40a49cce6e2d2ab9956235aab9074263
+    def add_render_index_entry(self, index, cell, value):
+        x, y = cell
+        if x == -1 or y == -1:
+            return
+        index.setdefault((x, y), []).append(value)
+
+    def rebuild_render_indexes(self):
+        self.render_gate_objects_by_cell = {}
+        self.render_gate_keys_by_cell = {}
+        self.render_item_objects_by_cell = {}
+        self.render_item_keys_by_cell = {}
+        self.render_gems_by_cell = {}
+        self.render_squads_by_cell = {}
+        self.render_hosts_by_cell = {}
+
+        for i in range(1, self.visible_gate_slots + 1):
+            g = self.gates[i]
+            self.add_render_index_entry(self.render_gate_objects_by_cell, (g['x'], g['y']), i)
+            for key_cell in g['keys']:
+                self.add_render_index_entry(self.render_gate_keys_by_cell, key_cell, i)
+
+        for i in range(1, self.visible_item_slots + 1):
+            it = self.items[i]
+            self.add_render_index_entry(self.render_item_objects_by_cell, (it['x'], it['y']), i)
+            for key_cell in it['keys']:
+                self.add_render_index_entry(self.render_item_keys_by_cell, key_cell, i)
+
+        for i in range(1, self.visible_gem_slots + 1):
+            gm = self.gems[i]
+            self.add_render_index_entry(self.render_gems_by_cell, (gm['x'], gm['y']), i)
+
+        for i, squad in enumerate(self.squads):
+            self.add_render_index_entry(self.render_squads_by_cell, (squad['x'], squad['y']), i)
+
+        for i, host in enumerate(self.host_stations):
+            self.add_render_index_entry(self.render_hosts_by_cell, (host['x'], host['y']), i)
+
+        self._render_indexes_valid = True
+
+    def ensure_render_indexes(self):
+        if not getattr(self, "_render_indexes_valid", False):
+            self.rebuild_render_indexes()
+
+    def invalidate_render_indexes(self):
+        self._render_indexes_valid = False
+
+    def get_squad_cell(self, index):
+        if index is None or index < 0 or index >= len(self.squads):
+            return None
+        squad = self.squads[index]
+        return (squad['x'], squad['y'])
+
+    def get_host_cell(self, index):
+        if index is None or index < 0 or index >= len(self.host_stations):
+            return None
+        host = self.host_stations[index]
+        return (host['x'], host['y'])
+
+    def redraw_cells(self, *cells):
+        if not hasattr(self, 'cv_map'):
+            return
+
+        unique_cells = []
+        seen = set()
+        for cell in cells:
+            if not cell:
+                continue
+            c, r = cell
+            if not (0 <= c < self.mw and 0 <= r < self.mh):
+                continue
+            if (c, r) in seen:
+                continue
+            seen.add((c, r))
+            unique_cells.append((c, r))
+
+        if not unique_cells:
+            return
+
+        self.rebuild_render_indexes()
+        self.cv_map.delete(self.MAP_BORDER_TAG)
+        for c, r in unique_cells:
+            self.draw_cell(c, r, refresh_border=False, refresh_indexes=False)
+        self.draw_map_outer_border()
+
+    def ensure_hover_overlay_item(self):
+        if not hasattr(self, 'cv_map'):
+            return None
+
+        item_id = getattr(self, "_hover_item_id", None)
+        if item_id is not None:
+            try:
+                self.cv_map.itemconfigure(item_id, state="hidden")
+                return item_id
+            except tk.TclError:
+                pass
+
+        self._hover_item_id = self.cv_map.create_rectangle(
+            0, 0, 0, 0,
+            outline=self.HOVER_COLOR,
+            width=1,
+            dash=(3, 2),
+            state="hidden",
+            tags=self.HOVER_TAG
+        )
+        return self._hover_item_id
+
     def clear_hover_overlay(self, event=None):
-        if hasattr(self, 'cv_map'):
-            self.cv_map.delete(self.HOVER_TAG)
+        item_id = self.ensure_hover_overlay_item()
+        if item_id is not None:
+            self.cv_map.itemconfigure(item_id, state="hidden")
         self.hover_cell = None
 
     def draw_hover_overlay(self, col, row):
         if not hasattr(self, 'cv_map'):
             return
-        self.cv_map.delete(self.HOVER_TAG)
 
         sz = self.zoom_m
         x = col * sz
         y = row * sz
         inset = max(3, min(6, sz // 8))
-        self.cv_map.create_rectangle(
+        item_id = self.ensure_hover_overlay_item()
+        if item_id is None:
+            return
+
+        self.cv_map.coords(
+            item_id,
             x + inset,
             y + inset,
             x + sz - inset,
-            y + sz - inset,
-            outline=self.HOVER_COLOR,
-            width=1,
-            dash=(3, 2),
-            tags=self.HOVER_TAG
+            y + sz - inset
         )
+        self.cv_map.itemconfigure(item_id, state="normal")
+        self.cv_map.tag_raise(self.HOVER_TAG)
         self.cv_map.tag_raise(self.MAP_BORDER_TAG)
 
     def update_hover_from_event(self, event):
@@ -310,7 +397,6 @@ class CanvasMixin:
 
         hover_cell = (col, row)
         if hover_cell == getattr(self, "hover_cell", None):
-            self.cv_map.tag_raise(self.HOVER_TAG)
             return
 
         self.hover_cell = hover_cell
@@ -342,20 +428,11 @@ class CanvasMixin:
         self.cv_map.tag_raise(self.HOVER_TAG)
         self.cv_map.tag_raise(self.MAP_BORDER_TAG)
 
-<<<<<<< HEAD
-=======
->>>>>>> 9935212 (Refactor code structure for improved readability and maintainability)
->>>>>>> 960ab1aa40a49cce6e2d2ab9956235aab9074263
     def draw_special_icon(self, x, y, sz, tag, icon_key):
         img = self.get_img('special', icon_key, sz)
         if img:
             self.cv_map.create_image(x, y, image=img, anchor=tk.NW, tags=tag)
 
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
-=======
->>>>>>> 960ab1aa40a49cce6e2d2ab9956235aab9074263
     def get_unknown_id_label(self, cat, hex_id):
         try:
             val_int = int(hex_id, 16)
@@ -370,25 +447,13 @@ class CanvasMixin:
             return HEIGHT_LOW_COLOR
         return base_color
 
-<<<<<<< HEAD
-=======
->>>>>>> 9935212 (Refactor code structure for improved readability and maintainability)
->>>>>>> 960ab1aa40a49cce6e2d2ab9956235aab9074263
     def draw_height_overlay(self, x, y, sz, editor_height, tag):
         delta = editor_height - EDITOR_HEIGHT_BASE
         visual_delta = max(-15, min(15, delta))
         center_y = y + (sz // 2)
         fill_h = int((abs(visual_delta) / 15.0) * (sz / 2))
 
-<<<<<<< HEAD
         self.cv_map.create_rectangle(x, y, x + sz, y + sz, fill="#202020", outline="", stipple="gray12", tags=tag)
-=======
-<<<<<<< HEAD
-        self.cv_map.create_rectangle(x, y, x + sz, y + sz, fill="#000000", outline="", stipple="gray12", tags=tag)
-=======
-        self.cv_map.create_rectangle(x, y, x + sz, y + sz, fill="#202020", outline="", stipple="gray12", tags=tag)
->>>>>>> 9935212 (Refactor code structure for improved readability and maintainability)
->>>>>>> 960ab1aa40a49cce6e2d2ab9956235aab9074263
 
         if visual_delta > 0 and fill_h > 0:
             self.cv_map.create_rectangle(
@@ -401,100 +466,60 @@ class CanvasMixin:
                 fill=HEIGHT_LOW_COLOR, outline="", stipple="gray50", tags=tag
             )
 
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
-        line_w = max(1, sz // 28)
-        self.cv_map.create_line(
-            x + 2, center_y, x + sz - 2, center_y,
-            fill="#FFFFFF", width=line_w, tags=tag
-        )
-
-=======
->>>>>>> 9935212 (Refactor code structure for improved readability and maintainability)
->>>>>>> 960ab1aa40a49cce6e2d2ab9956235aab9074263
     def draw_height_number(self, x, y, sz, editor_height, tag):
+        if self.mode != "HGT" and not SHOW_HEIGHT_NUMBERS_OUTSIDE_HGT:
+            return
+        if self.mode == "HGT" and sz < HGT_NUMBER_MIN_ZOOM:
+            return
+
         text = str(editor_height)
         if self.mode == "HGT":
             font = ("Arial", max(6, sz // 8), "bold")
-<<<<<<< HEAD
             text_color = self.get_height_tint_color(editor_height, "#FFFFFF")
-=======
-<<<<<<< HEAD
-=======
-            text_color = self.get_height_tint_color(editor_height, "#FFFFFF")
->>>>>>> 9935212 (Refactor code structure for improved readability and maintainability)
->>>>>>> 960ab1aa40a49cce6e2d2ab9956235aab9074263
             self.cv_map.create_text(
                 x + 3,
                 y + 2,
                 text=text,
-<<<<<<< HEAD
                 fill=text_color,
-=======
-<<<<<<< HEAD
-                fill="#FF0000",
-=======
-                fill=text_color,
->>>>>>> 9935212 (Refactor code structure for improved readability and maintainability)
->>>>>>> 960ab1aa40a49cce6e2d2ab9956235aab9074263
                 font=font,
                 anchor=tk.NW,
                 tags=tag
             )
         elif sz >= 32:
             font = ("Arial", max(6, sz // 8), "bold")
-            self.draw_text_with_outline(
-                self.cv_map,
+            self.cv_map.create_text(
                 x + 3,
                 y + 2,
-                text,
-                "#68C7CC",
-                font,
-                tag,
-                outline="#101010",
-                width=1
+                text=text,
+                fill="#68C7CC",
+                font=font,
+                anchor=tk.NW,
+                tags=tag
             )
 
-<<<<<<< HEAD
-    def draw_cell(self, c, r, refresh_border=True):
+    def draw_cell(self, c, r, refresh_border=True, refresh_indexes=True):
+        if refresh_indexes:
+            self.rebuild_render_indexes()
+        else:
+            self.ensure_render_indexes()
+
         sz = self.zoom_m; x, y = c*sz, r*sz; tag = f"c_{c}_{r}"
         self.cv_map.delete(tag)
         if refresh_border:
             self.cv_map.delete(self.MAP_BORDER_TAG)
-=======
-<<<<<<< HEAD
-    def draw_cell(self, c, r):
-        sz = self.zoom_m; x, y = c*sz, r*sz; tag = f"c_{c}_{r}"
-        self.cv_map.delete(tag)
-=======
-    def draw_cell(self, c, r, refresh_border=True):
-        sz = self.zoom_m; x, y = c*sz, r*sz; tag = f"c_{c}_{r}"
-        self.cv_map.delete(tag)
-        if refresh_border:
-            self.cv_map.delete(self.MAP_BORDER_TAG)
->>>>>>> 9935212 (Refactor code structure for improved readability and maintainability)
->>>>>>> 960ab1aa40a49cce6e2d2ab9956235aab9074263
 
         # RULER LOGIC
         if r == 0 or r == self.mh - 1 or c == 0 or c == self.mw - 1:
             self.cv_map.create_rectangle(x, y, x + sz, y + sz, fill="#151515", outline="#404040", tags=tag)
-            self.draw_height_number(x, y, sz, self.get_editor_height_value(r, c), tag)
+            if self.mode == "HGT" or SHOW_HEIGHT_NUMBERS_OUTSIDE_HGT:
+                self.draw_height_number(x, y, sz, self.get_editor_height_value(r, c), tag)
             
             txt = ""
             if (r == 0 or r == self.mh - 1) and (0 < c < self.mw - 1): txt = str(c)
             elif (c == 0 or c == self.mw - 1) and (0 < r < self.mh - 1): txt = str(r)
             if txt: self.cv_map.create_text(x + sz//2, y + sz//2, text=txt, fill="#00FFFF", font=("Arial", max(8, sz//3), "bold"), tags=tag)
-<<<<<<< HEAD
             if refresh_border:
                 self.draw_map_outer_border()
-=======
-<<<<<<< HEAD
-=======
-            if refresh_border:
-                self.draw_map_outer_border()
->>>>>>> 9935212 (Refactor code structure for improved readability and maintainability)
->>>>>>> 960ab1aa40a49cce6e2d2ab9956235aab9074263
             return
 
         # --- STANDARD MAP RENDERING (BASE LAYER) ---
@@ -509,16 +534,8 @@ class CanvasMixin:
 
         if self.clear_view and self.mode == "HGT":
             self.cv_map.create_rectangle(x,y,x+sz,y+sz, outline=GRID_COLOR, tags=tag)
-<<<<<<< HEAD
             if refresh_border:
                 self.draw_map_outer_border()
-=======
-<<<<<<< HEAD
-=======
-            if refresh_border:
-                self.draw_map_outer_border()
->>>>>>> 9935212 (Refactor code structure for improved readability and maintainability)
->>>>>>> 960ab1aa40a49cce6e2d2ab9956235aab9074263
             return
 
         if self.mode == "HGT":
@@ -526,16 +543,8 @@ class CanvasMixin:
             self.draw_height_overlay(x, y, sz, editor_height, tag)
             self.cv_map.create_rectangle(x, y, x+sz, y+sz, outline="#3A3A3A", width=1, tags=tag)
             self.draw_height_number(x, y, sz, editor_height, tag)
-<<<<<<< HEAD
             if refresh_border:
                 self.draw_map_outer_border()
-=======
-<<<<<<< HEAD
-=======
-            if refresh_border:
-                self.draw_map_outer_border()
->>>>>>> 9935212 (Refactor code structure for improved readability and maintainability)
->>>>>>> 960ab1aa40a49cce6e2d2ab9956235aab9074263
             return
 
         # 3. Custom Sector Outline & Logic (Transparent center)
@@ -544,21 +553,11 @@ class CanvasMixin:
             # Only Red Border, no fill (Transparent)
             self.cv_map.create_rectangle(x,y,x+sz,y+sz, outline=CUSTOM_BORDER_COLOR, width=2, tags=tag)
 
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
-        if self.clear_view: self.cv_map.create_rectangle(x,y,x+sz,y+sz, outline=GRID_COLOR, tags=tag); return
-=======
->>>>>>> 960ab1aa40a49cce6e2d2ab9956235aab9074263
         if self.clear_view:
             self.cv_map.create_rectangle(x,y,x+sz,y+sz, outline=GRID_COLOR, tags=tag)
             if refresh_border:
                 self.draw_map_outer_border()
             return
-<<<<<<< HEAD
-=======
->>>>>>> 9935212 (Refactor code structure for improved readability and maintainability)
->>>>>>> 960ab1aa40a49cce6e2d2ab9956235aab9074263
 
         # 4. Building Layer
         bid = self.grids['blg'][r][c]
@@ -572,15 +571,7 @@ class CanvasMixin:
                  self.cv_map.create_rectangle(x+1,y+1,x+sz-1,y+sz-1, outline=CUSTOM_BORDER_COLOR, width=3, tags=tag)
             self.draw_building_overlays(x, y, sz, bid, tag)
 
-<<<<<<< HEAD
         # --- TEXT RENDERING PRIORITY & COLOR UNIFICATION ---
-=======
-<<<<<<< HEAD
-        # --- MOD: TEXT RENDERING PRIORITY & COLOR UNIFICATION ---
-=======
-        # --- TEXT RENDERING PRIORITY & COLOR UNIFICATION ---
->>>>>>> 9935212 (Refactor code structure for improved readability and maintainability)
->>>>>>> 960ab1aa40a49cce6e2d2ab9956235aab9074263
         # Rule: Show Building Text if present. Else Show Sector Text if present.
         # Color: Yellow (#FFFF00) for both.
         # Format: ID \n Name
@@ -588,23 +579,11 @@ class CanvasMixin:
         text_to_draw = None
         
         if is_custom_building:
-<<<<<<< HEAD
             name = self.get_unknown_id_label('blg', bid)
-=======
-<<<<<<< HEAD
-            try:
-                 val_int = int(bid, 16)
-                 name = self.custom_definitions['blg'].get(val_int, "MOD")
-            except: name = "MOD"
-=======
-            name = self.get_unknown_id_label('blg', bid)
->>>>>>> 9935212 (Refactor code structure for improved readability and maintainability)
->>>>>>> 960ab1aa40a49cce6e2d2ab9956235aab9074263
             text_to_draw = f"{bid}\n{name}"
             
         elif is_custom_sector:
             # Only draw sector text if building text is NOT drawn
-<<<<<<< HEAD
             name = self.get_unknown_id_label('type', tid)
             text_to_draw = f"{tid}\n{name}"
 
@@ -612,65 +591,38 @@ class CanvasMixin:
              label_text, label_font = self.fit_cell_multiline_text(text_to_draw, sz)
              if label_text:
                  self.cv_map.create_text(x+sz//2, y+sz//2, text=label_text, fill="#FFFF00", font=label_font, justify=tk.CENTER, tags=tag)
-=======
-<<<<<<< HEAD
-            try:
-                val_int = int(tid, 16)
-                name = self.custom_definitions['type'].get(val_int, "MOD")
-            except: name = "MOD"
-            text_to_draw = f"{tid}\n{name}"
-
-        if text_to_draw:
-             f_size = max(8, sz // 4)
-             self.cv_map.create_text(x+sz//2, y+sz//2, text=text_to_draw, fill="#FFFF00", font=("Arial", int(f_size), "bold"), justify=tk.CENTER, tags=tag)
-=======
-            name = self.get_unknown_id_label('type', tid)
-            text_to_draw = f"{tid}\n{name}"
-
-        if text_to_draw:
-             label_text, label_font = self.fit_cell_multiline_text(text_to_draw, sz)
-             if label_text:
-                 self.cv_map.create_text(x+sz//2, y+sz//2, text=label_text, fill="#FFFF00", font=label_font, justify=tk.CENTER, tags=tag)
->>>>>>> 9935212 (Refactor code structure for improved readability and maintainability)
->>>>>>> 960ab1aa40a49cce6e2d2ab9956235aab9074263
 
 
         # --- GLOW LOGIC ---
         glow_width = 3
 
         # BEAMGATES
-        for i in range(1, self.visible_gate_slots + 1):
-            g = self.gates[i]
-            if g['x'] == c and g['y'] == r:
-                self.draw_special_icon(x, y, sz, tag, 'gate')
-                if self.mode == "GATE" and i == self.current_gate_slot:
-                     self.draw_cell_outline(x, y, sz, tag, width=glow_width, inset=2)
+        for i in self.render_gate_objects_by_cell.get((c, r), []):
+            self.draw_special_icon(x, y, sz, tag, 'gate')
+            if self.mode == "GATE" and i == self.current_gate_slot:
+                 self.draw_cell_outline(x, y, sz, tag, width=glow_width, inset=2)
 
-            if (c,r) in g['keys']:
-                self.draw_special_icon(x, y, sz, tag, 'key')
-                if self.mode == "GATE" and i == self.current_gate_slot:
-                     self.draw_cell_outline(x, y, sz, tag, width=glow_width, inset=2)
+        for i in self.render_gate_keys_by_cell.get((c, r), []):
+            self.draw_special_icon(x, y, sz, tag, 'key')
+            if self.mode == "GATE" and i == self.current_gate_slot:
+                 self.draw_cell_outline(x, y, sz, tag, width=glow_width, inset=2)
 
         # BOMBS
-        for i in range(1, self.visible_item_slots + 1):
-            it = self.items[i]
-            if it['x'] == c and it['y'] == r:
-                self.draw_special_icon(x, y, sz, tag, 'item')
-                if self.mode == "ITEM" and i == self.current_item_slot:
-                     self.draw_cell_outline(x, y, sz, tag, width=glow_width, inset=2)
+        for i in self.render_item_objects_by_cell.get((c, r), []):
+            self.draw_special_icon(x, y, sz, tag, 'item')
+            if self.mode == "ITEM" and i == self.current_item_slot:
+                 self.draw_cell_outline(x, y, sz, tag, width=glow_width, inset=2)
 
-            if (c,r) in it['keys']:
-                self.draw_special_icon(x, y, sz, tag, 'item_key')
-                if self.mode == "ITEM" and i == self.current_item_slot:
-                     self.draw_cell_outline(x, y, sz, tag, width=glow_width, inset=2)
+        for i in self.render_item_keys_by_cell.get((c, r), []):
+            self.draw_special_icon(x, y, sz, tag, 'item_key')
+            if self.mode == "ITEM" and i == self.current_item_slot:
+                 self.draw_cell_outline(x, y, sz, tag, width=glow_width, inset=2)
 
         # GEMS
-        for i in range(1, self.visible_gem_slots + 1):
-            gm = self.gems[i]
-            if gm['x'] == c and gm['y'] == r:
-                self.draw_special_icon(x, y, sz, tag, 'gem')
-                if self.mode == "GEM" and i == self.current_gem_slot:
-                     self.draw_cell_outline(x, y, sz, tag, width=glow_width, inset=2)
+        for i in self.render_gems_by_cell.get((c, r), []):
+            self.draw_special_icon(x, y, sz, tag, 'gem')
+            if self.mode == "GEM" and i == self.current_gem_slot:
+                 self.draw_cell_outline(x, y, sz, tag, width=glow_width, inset=2)
 
         fid = self.grids['own'][r][c]
         if fid != 0:
@@ -688,7 +640,8 @@ class CanvasMixin:
             self.draw_building_markers(x, y, sz, tag)
 
         # HOST STATIONS
-        hosts_here = [(i, h) for i, h in enumerate(self.host_stations) if h['x'] == c and h['y'] == r]
+        host_indexes_here = self.render_hosts_by_cell.get((c, r), [])
+        hosts_here = [(i, self.host_stations[i]) for i in host_indexes_here]
         if hosts_here:
             i, h = hosts_here[-1]
             f_col = FACTIONS[h['owner']][1] if FACTIONS[h['owner']][1] else "#FFF"
@@ -698,14 +651,16 @@ class CanvasMixin:
             vname = h['custom_name']
             if not vname: vname = self.defs['host'].get(h['veh'], "Unknown")
             txt_col = "black" if h['owner'] in [2,3,4] else "white"
-            squads_here = [(i, s) for i, s in enumerate(self.squads) if s['x'] == c and s['y'] == r]
+            squad_indexes_here = self.render_squads_by_cell.get((c, r), [])
+            squads_here = [(i, self.squads[i]) for i in squad_indexes_here]
             host_label_position = "top" if squads_here else "bottom"
             self.draw_cell_label(x, y, sz, vname, f_col, txt_col, tag, position=host_label_position)
             if self.mode == "HOST" and i == self.current_host_index:
                  self.draw_cell_outline(x, y, sz, tag, width=2, inset=1)
 
         # SQUADS
-        squads_here = [(i, s) for i, s in enumerate(self.squads) if s['x'] == c and s['y'] == r]
+        squad_indexes_here = self.render_squads_by_cell.get((c, r), [])
+        squads_here = [(i, self.squads[i]) for i in squad_indexes_here]
         if squads_here:
             i, s = squads_here[-1]
             vname = s['custom_name']
@@ -718,44 +673,32 @@ class CanvasMixin:
                  self.draw_cell_outline(x, y, sz, tag, width=3, inset=1)
 
         self.cv_map.create_rectangle(x,y,x+sz,y+sz, outline=GRID_COLOR, tags=tag)
-        self.draw_height_number(x, y, sz, self.get_editor_height_value(r, c), tag)
-<<<<<<< HEAD
+        if SHOW_HEIGHT_NUMBERS_OUTSIDE_HGT:
+            self.draw_height_number(x, y, sz, self.get_editor_height_value(r, c), tag)
         if refresh_border:
             self.draw_map_outer_border()
-=======
-<<<<<<< HEAD
-=======
-        if refresh_border:
-            self.draw_map_outer_border()
->>>>>>> 9935212 (Refactor code structure for improved readability and maintainability)
->>>>>>> 960ab1aa40a49cce6e2d2ab9956235aab9074263
 
     def draw_grid(self):
         if not hasattr(self, 'cv_map'): return
+        start_time = time.perf_counter() if DEBUG_RENDER_PERF else None
         self.cv_map.delete("all")
-<<<<<<< HEAD
         self.hover_cell = None
+        self._hover_item_id = None
+        self.rebuild_render_indexes()
         rows = getattr(self, 'mh', DEFAULT_H)
         cols = getattr(self, 'mw', DEFAULT_W)
         for r in range(rows):
-            for c in range(cols): self.draw_cell(c, r, refresh_border=False)
+            for c in range(cols): self.draw_cell(c, r, refresh_border=False, refresh_indexes=False)
+        self.ensure_hover_overlay_item()
         self.draw_map_outer_border()
-=======
-<<<<<<< HEAD
-        rows = getattr(self, 'mh', DEFAULT_H)
-        cols = getattr(self, 'mw', DEFAULT_W)
-        for r in range(rows):
-            for c in range(cols): self.draw_cell(c, r)
-=======
-        self.hover_cell = None
-        rows = getattr(self, 'mh', DEFAULT_H)
-        cols = getattr(self, 'mw', DEFAULT_W)
-        for r in range(rows):
-            for c in range(cols): self.draw_cell(c, r, refresh_border=False)
-        self.draw_map_outer_border()
->>>>>>> 9935212 (Refactor code structure for improved readability and maintainability)
->>>>>>> 960ab1aa40a49cce6e2d2ab9956235aab9074263
         self.cv_map.config(scrollregion=(0,0,self.mw*self.zoom_m, self.mh*self.zoom_m))
+        if DEBUG_RENDER_PERF:
+            elapsed_ms = (time.perf_counter() - start_time) * 1000
+            item_count = len(self.cv_map.find_all())
+            print(
+                f"draw_grid: mode={self.mode} size={cols}x{rows} "
+                f"zoom={self.zoom_m} items={item_count} time={elapsed_ms:.1f} ms"
+            )
 
     def draw_palette(self, e=None):
         if self.mode in ["HGT", "GATE", "ITEM", "TECH", "GEM", "SCRIPT", "SQUAD", "HOST"]: return
@@ -909,14 +852,7 @@ class CanvasMixin:
         else:
             self.cv_map.yview_moveto(0.0)
 
-<<<<<<< HEAD
         self.update_hover_from_event(event)
-=======
-<<<<<<< HEAD
-=======
-        self.update_hover_from_event(event)
->>>>>>> 9935212 (Refactor code structure for improved readability and maintainability)
->>>>>>> 960ab1aa40a49cce6e2d2ab9956235aab9074263
         return "break"
 
     def bind_scroll(self, w):
@@ -971,14 +907,7 @@ class CanvasMixin:
     def on_map_left_press(self, event):
         if self.space_pan_active:
             return self.start_map_pan(event, source="space_left")
-<<<<<<< HEAD
         self.update_hover_from_event(event)
-=======
-<<<<<<< HEAD
-=======
-        self.update_hover_from_event(event)
->>>>>>> 9935212 (Refactor code structure for improved readability and maintainability)
->>>>>>> 960ab1aa40a49cce6e2d2ab9956235aab9074263
         if self.mode in ["TYPE", "OWN", "BLG", "HGT", "GATE", "ITEM", "GEM", "SQUAD", "HOST"] and not self._map_edit_snapshot_taken:
             self.push_undo_snapshot()
             self._map_edit_snapshot_taken = True
@@ -987,14 +916,7 @@ class CanvasMixin:
     def on_map_left_drag(self, event):
         if self._map_panning and self._map_pan_source == "space_left":
             return self.drag_map_pan(event)
-<<<<<<< HEAD
         self.update_hover_from_event(event)
-=======
-<<<<<<< HEAD
-=======
-        self.update_hover_from_event(event)
->>>>>>> 9935212 (Refactor code structure for improved readability and maintainability)
->>>>>>> 960ab1aa40a49cce6e2d2ab9956235aab9074263
         return self.on_click(event)
 
     def on_map_left_release(self, event):
@@ -1010,14 +932,7 @@ class CanvasMixin:
     def start_map_pan(self, event, source="middle"):
         self._map_panning = True
         self._map_pan_source = source
-<<<<<<< HEAD
         self.clear_hover_overlay()
-=======
-<<<<<<< HEAD
-=======
-        self.clear_hover_overlay()
->>>>>>> 9935212 (Refactor code structure for improved readability and maintainability)
->>>>>>> 960ab1aa40a49cce6e2d2ab9956235aab9074263
         self.cv_map.focus_set()
         self.cv_map.scan_mark(event.x, event.y)
         self.cv_map.config(cursor="fleur")
@@ -1033,16 +948,8 @@ class CanvasMixin:
         self._map_panning = False
         self._map_pan_source = None
         self.cv_map.config(cursor="")
-<<<<<<< HEAD
         if event is not None:
             self.update_hover_from_event(event)
-=======
-<<<<<<< HEAD
-=======
-        if event is not None:
-            self.update_hover_from_event(event)
->>>>>>> 9935212 (Refactor code structure for improved readability and maintainability)
->>>>>>> 960ab1aa40a49cce6e2d2ab9956235aab9074263
         return "break"
 
     def on_click(self, e):
@@ -1071,7 +978,8 @@ class CanvasMixin:
                         old_x, old_y = self._drag_key_list[self._drag_key_idx]
                         if (old_x != cx or old_y != cy):
                             self._drag_key_list[self._drag_key_idx] = (cx, cy)
-                            self.draw_cell(old_x, old_y); self.draw_cell(cx, cy)
+                            self.invalidate_render_indexes()
+                            self.redraw_cells((old_x, old_y), (cx, cy))
                     return
                 
                 # 2. Main Object Dragging Logic (ONLY if NOT using KEY tool)
@@ -1080,7 +988,8 @@ class CanvasMixin:
                              if not self.has_main_object(cx, cy, self.mode, current_slot):
                                  ox, oy = current_data['x'], current_data['y']
                                  current_data['x'], current_data['y'] = cx, cy
-                                 self.draw_cell(ox, oy); self.draw_cell(cx, cy)
+                                 self.invalidate_render_indexes()
+                                 self.redraw_cells((ox, oy), (cx, cy))
                 return
 
             # B. CLICK (PLACEMENT)
@@ -1098,7 +1007,8 @@ class CanvasMixin:
                         self._drag_key_idx = current_data['keys'].index((cx, cy))
                     else:
                         current_data['keys'].append((cx, cy))
-                        self.draw_cell(cx, cy)
+                        self.invalidate_render_indexes()
+                        self.redraw_cells((cx, cy))
                     return
                 else:
                     target_mode = self.mode
@@ -1113,8 +1023,8 @@ class CanvasMixin:
 
                     old_x, old_y = current_data['x'], current_data['y']
                     current_data['x'] = cx; current_data['y'] = cy
-                    if old_x != -1: self.draw_cell(old_x, old_y)
-                    self.draw_cell(cx, cy)
+                    self.invalidate_render_indexes()
+                    self.redraw_cells((old_x, old_y), (cx, cy))
             return
 
         # --- 3. SQUAD HANDLING ---
@@ -1127,7 +1037,8 @@ class CanvasMixin:
                          sq = self.squads[idx]; old_x, old_y = sq['x'], sq['y']
                          if old_x != cx or old_y != cy:
                             sq['x'], sq['y'] = cx, cy
-                            self.draw_cell(old_x, old_y); self.draw_cell(cx, cy)
+                            self.invalidate_render_indexes()
+                            self.redraw_cells((old_x, old_y), (cx, cy))
                 return
 
             if str(e.type) == '4': # Click
@@ -1136,13 +1047,14 @@ class CanvasMixin:
                     if s['x'] == cx and s['y'] == cy: clicked_squad_index = i; break
 
                 if clicked_squad_index != -1:
+                    previous_cell = self.get_squad_cell(self.current_squad_index)
                     self.lb_squads.selection_clear(0, tk.END)
                     self.lb_squads.selection_set(clicked_squad_index)
                     self.lb_squads.activate(clicked_squad_index)
                     self.lb_squads.see(clicked_squad_index)
                     self.current_squad_index = clicked_squad_index
                     self._drag_squad_idx = clicked_squad_index
-                    self.draw_grid()
+                    self.redraw_cells(previous_cell, (cx, cy))
                     return
 
                 if self.has_squad(cx, cy):
@@ -1171,7 +1083,9 @@ class CanvasMixin:
                 new_sq = copy.deepcopy(self.current_squad_data)
                 new_sq['x'], new_sq['y'] = cx, cy
                 self.squads.append(new_sq)
-                self.draw_cell(cx, cy); self.refresh_squad_list()
+                self.invalidate_render_indexes()
+                self.redraw_cells((cx, cy))
+                self.refresh_squad_list(redraw=False)
             return
 
         # --- 4. HOST STATION HANDLING ---
@@ -1184,7 +1098,8 @@ class CanvasMixin:
                          hst = self.host_stations[idx]; old_x, old_y = hst['x'], hst['y']
                          if old_x != cx or old_y != cy:
                             hst['x'], hst['y'] = cx, cy
-                            self.draw_cell(old_x, old_y); self.draw_cell(cx, cy)
+                            self.invalidate_render_indexes()
+                            self.redraw_cells((old_x, old_y), (cx, cy))
                 return
 
             if str(e.type) == '4': # Click
@@ -1193,13 +1108,14 @@ class CanvasMixin:
                     if h['x'] == cx and h['y'] == cy: clicked_host_index = i; break
 
                 if clicked_host_index != -1:
+                    previous_cell = self.get_host_cell(self.current_host_index)
                     self.lb_hosts.selection_clear(0, tk.END)
                     self.lb_hosts.selection_set(clicked_host_index)
                     self.lb_hosts.activate(clicked_host_index)
                     self.lb_hosts.see(clicked_host_index)
                     self.current_host_index = clicked_host_index
                     self._drag_host_idx = clicked_host_index
-                    self.draw_grid()
+                    self.redraw_cells(previous_cell, (cx, cy))
                     return
 
                 if self.has_host(cx, cy):
@@ -1227,7 +1143,9 @@ class CanvasMixin:
                 new_hst['x'], new_hst['y'] = cx, cy
 
                 self.host_stations.append(new_hst)
-                self.draw_cell(cx, cy); self.refresh_host_list()
+                self.invalidate_render_indexes()
+                self.redraw_cells((cx, cy))
+                self.refresh_host_list(redraw=False)
             return
 
         # --- 5. TILE PAINTING ---
@@ -1237,7 +1155,7 @@ class CanvasMixin:
         elif self.mode=="OWN": self.grids['own'][cy][cx]=self.sel['own']
         elif self.mode=="HGT": self.grids['hgt'][cy][cx] = max(HGT_MIN, min(HGT_MAX, self.sel['hgt']))
         elif self.mode=="BLG": self.grids['blg'][cy][cx]=self.sel['blg']
-        self.draw_cell(cx, cy)
+        self.redraw_cells((cx, cy))
 
     def on_right_click(self, e):
         cx, cy = int(self.cv_map.canvasx(e.x)//self.zoom_m), int(self.cv_map.canvasy(e.y)//self.zoom_m)
@@ -1245,22 +1163,34 @@ class CanvasMixin:
 
         # SQUAD REMOVAL
         if self.mode == "SQUAD":
-             self.lb_squads.selection_clear(0, tk.END); self.current_squad_index = -1; self.draw_grid()
+             previous_cell = self.get_squad_cell(self.current_squad_index)
+             self.lb_squads.selection_clear(0, tk.END); self.current_squad_index = -1
              for i in reversed(range(len(self.squads))):
                     s = self.squads[i]
                     if s['x'] == cx and s['y'] == cy:
                         self.push_undo_snapshot()
-                        self.squads.pop(i); self.draw_cell(cx, cy); self.refresh_squad_list(); break
+                        self.squads.pop(i)
+                        self.invalidate_render_indexes()
+                        self.redraw_cells(previous_cell, (cx, cy))
+                        self.refresh_squad_list(redraw=False); break
+             else:
+                    self.redraw_cells(previous_cell)
              return
 
         # HOST REMOVAL
         if self.mode == "HOST":
-             self.lb_hosts.selection_clear(0, tk.END); self.current_host_index = -1; self.draw_grid()
+             previous_cell = self.get_host_cell(self.current_host_index)
+             self.lb_hosts.selection_clear(0, tk.END); self.current_host_index = -1
              for i in reversed(range(len(self.host_stations))):
                     h = self.host_stations[i]
                     if h['x'] == cx and h['y'] == cy:
                         self.push_undo_snapshot()
-                        self.host_stations.pop(i); self.draw_cell(cx, cy); self.refresh_host_list(); break
+                        self.host_stations.pop(i)
+                        self.invalidate_render_indexes()
+                        self.redraw_cells(previous_cell, (cx, cy))
+                        self.refresh_host_list(redraw=False); break
+             else:
+                    self.redraw_cells(previous_cell)
              return
 
         if self.mode in ["TYPE", "OWN", "BLG", "HGT"]: self.pick(e); return
@@ -1268,32 +1198,46 @@ class CanvasMixin:
             for i, g in self.gates.items():
                 if g['x'] == cx and g['y'] == cy:
                     self.push_undo_snapshot()
-                    g['x'] = -1; g['y'] = -1; self.draw_cell(cx, cy); return
+                    g['x'] = -1; g['y'] = -1
+                    self.invalidate_render_indexes()
+                    self.redraw_cells((cx, cy)); return
                 if (cx, cy) in g['keys']:
                     self.push_undo_snapshot()
-                    g['keys'].remove((cx, cy)); self.draw_cell(cx, cy); return
+                    g['keys'].remove((cx, cy))
+                    self.invalidate_render_indexes()
+                    self.redraw_cells((cx, cy)); return
         elif self.mode == "ITEM":
             for i, it in self.items.items():
                 if it['x'] == cx and it['y'] == cy:
                     self.push_undo_snapshot()
-                    it['x'] = -1; it['y'] = -1; self.draw_cell(cx, cy); return
+                    it['x'] = -1; it['y'] = -1
+                    self.invalidate_render_indexes()
+                    self.redraw_cells((cx, cy)); return
                 if (cx, cy) in it['keys']:
                     self.push_undo_snapshot()
-                    it['keys'].remove((cx, cy)); self.draw_cell(cx, cy); return
+                    it['keys'].remove((cx, cy))
+                    self.invalidate_render_indexes()
+                    self.redraw_cells((cx, cy)); return
         elif self.mode == "GEM":
             for i, gm in self.gems.items():
                 if gm['x'] == cx and gm['y'] == cy:
                     self.push_undo_snapshot()
-                    gm['x'] = -1; gm['y'] = -1; self.draw_cell(cx, cy); return
+                    gm['x'] = -1; gm['y'] = -1
+                    self.invalidate_render_indexes()
+                    self.redraw_cells((cx, cy)); return
 
     def handle_special_click(self, cx, cy, data_dict, tool_type):
+        old_cell = None
         if tool_type.endswith("GATE") or tool_type.endswith("ITEM"):
-            if data_dict['x'] != -1: ox, oy = data_dict['x'], data_dict['y']; data_dict['x'] = -1; self.draw_cell(ox, oy)
+            if data_dict['x'] != -1:
+                old_cell = (data_dict['x'], data_dict['y'])
+                data_dict['x'] = -1
             data_dict['x'], data_dict['y'] = cx, cy
         elif "KEY" in tool_type:
             if (cx,cy) in data_dict['keys']: data_dict['keys'].remove((cx,cy))
             else: data_dict['keys'].append((cx,cy))
-        self.draw_cell(cx, cy)
+        self.invalidate_render_indexes()
+        self.redraw_cells(old_cell, (cx, cy))
 
     def pick(self, e):
         cx, cy = int(self.cv_map.canvasx(e.x)//self.zoom_m), int(self.cv_map.canvasy(e.y)//self.zoom_m)
@@ -1311,30 +1255,15 @@ class CanvasMixin:
             self.upd_lbl(); self.draw_palette()
 
     def on_mouse_move(self, e):
-<<<<<<< HEAD
         self.update_hover_from_event(e)
-=======
-<<<<<<< HEAD
-=======
-        self.update_hover_from_event(e)
->>>>>>> 9935212 (Refactor code structure for improved readability and maintainability)
->>>>>>> 960ab1aa40a49cce6e2d2ab9956235aab9074263
         if self._map_panning:
             return
         if self.mode in ["TYPE", "OWN", "BLG", "HGT"]: return
 
         cx = int(self.cv_map.canvasx(e.x)//self.zoom_m)
         cy = int(self.cv_map.canvasy(e.y)//self.zoom_m)
-<<<<<<< HEAD
         if not (0 <= cx < self.mw and 0 <= cy < self.mh):
             return
-=======
-<<<<<<< HEAD
-=======
-        if not (0 <= cx < self.mw and 0 <= cy < self.mh):
-            return
->>>>>>> 9935212 (Refactor code structure for improved readability and maintainability)
->>>>>>> 960ab1aa40a49cce6e2d2ab9956235aab9074263
         world_x, world_z = self.grid_to_world(cx, cy)
 
         if hasattr(self, 'lbl_sel'):

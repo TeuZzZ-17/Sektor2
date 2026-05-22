@@ -11,11 +11,6 @@ from sektor_constants import *
 
 class HistoryMixin:
 
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
-=======
->>>>>>> 960ab1aa40a49cce6e2d2ab9956235aab9074263
     def make_document_snapshot(self):
         return {
             'mw': self.mw,
@@ -46,10 +41,6 @@ class HistoryMixin:
         self.dirty = self.make_document_snapshot() != self._saved_document_snapshot
         return self.dirty
 
-<<<<<<< HEAD
-=======
->>>>>>> 9935212 (Refactor code structure for improved readability and maintainability)
->>>>>>> 960ab1aa40a49cce6e2d2ab9956235aab9074263
     def make_snapshot(self):
         return {
             'mw': self.mw,
