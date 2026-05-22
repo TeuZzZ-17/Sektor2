@@ -1,0 +1,82 @@
+[
+  {
+    "id": 1,
+    "name": "Power_Station_II"
+  },
+  {
+    "id": 2,
+    "name": "Flak_Station_II"
+  },
+  {
+    "id": 10,
+    "name": "Myko_Power_I"
+  },
+  {
+    "id": 11,
+    "name": "Power_Flak_I"
+  },
+  {
+    "id": 12,
+    "name": "Kyt_Power_II"
+  },
+  {
+    "id": 13,
+    "name": "Myko_Flak_I"
+  },
+  {
+    "id": 14,
+    "name": "Power_Station_III"
+  },
+  {
+    "id": 17,
+    "name": "Taer_Power_II"
+  },
+  {
+    "id": 28,
+    "name": "Flak_Station_I"
+  },
+  {
+    "id": 30,
+    "name": "Kyt_Flak"
+  },
+  {
+    "id": 31,
+    "name": "Taer_Flak"
+  },
+  {
+    "id": 52,
+    "name": "Kyt_Power_I"
+  },
+  {
+    "id": 53,
+    "name": "Taer_Power_I"
+  },
+  {
+    "id": 54,
+    "name": "Radar_Station"
+  },
+  {
+    "id": 63,
+    "name": "Power_Station_I"
+  },
+  {
+    "id": 64,
+    "name": "Power_Flak_I"
+  },
+  {
+    "id": 71,
+    "name": "Kyt_Radar"
+  },
+  {
+    "id": 72,
+    "name": "Myko_Radar"
+  },
+  {
+    "id": 73,
+    "name": "Taer_Radar"
+  },
+  {
+    "id": 62,
+    "name": "Stonehenge"
+  }
+]
