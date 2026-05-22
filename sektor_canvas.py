@@ -300,6 +300,10 @@ class CanvasMixin:
         img = self.get_img('type', tid, sz)
         if img: self.cv_map.create_image(x,y,image=img, anchor=tk.NW, tags=tag)
 
+        if self.clear_view and self.mode == "HGT":
+            self.cv_map.create_rectangle(x,y,x+sz,y+sz, outline=GRID_COLOR, tags=tag)
+            return
+
         if self.mode == "HGT":
             editor_height = self.get_editor_height_value(r, c)
             self.draw_height_overlay(x, y, sz, editor_height, tag)
