@@ -57,7 +57,13 @@ class SektorEditor(
         self.undo_stack = []
         self.redo_stack = []
         self.max_history = 100
+<<<<<<< HEAD
         self._map_edit_snapshot_taken = False
+=======
+        self.dirty = False
+        self._map_edit_snapshot_taken = False
+        self.hover_cell = None
+>>>>>>> 9935212 (Refactor code structure for improved readability and maintainability)
 
         # LEVEL INFO
         self.lvl_info = {
@@ -145,8 +151,15 @@ class SektorEditor(
 
         self.build_gui()
         self.reset_map(confirm=False, track_history=False)
+<<<<<<< HEAD
 
         self.set_mode("TYPE")
+=======
+        self.mark_saved_state()
+
+        self.set_mode("TYPE")
+        self.root.protocol("WM_DELETE_WINDOW", self.on_close)
+>>>>>>> 9935212 (Refactor code structure for improved readability and maintainability)
         self.root.after(100, self.ask_dims)
 
 if __name__ == "__main__":

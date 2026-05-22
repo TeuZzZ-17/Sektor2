@@ -11,6 +11,39 @@ from sektor_constants import *
 
 class HistoryMixin:
 
+<<<<<<< HEAD
+=======
+    def make_document_snapshot(self):
+        return {
+            'mw': self.mw,
+            'mh': self.mh,
+            'set_folder': self.set_folder,
+            'grids': copy.deepcopy(self.grids),
+            'gates': copy.deepcopy(self.gates),
+            'items': copy.deepcopy(self.items),
+            'gems': copy.deepcopy(self.gems),
+            'squads': copy.deepcopy(self.squads),
+            'host_stations': copy.deepcopy(self.host_stations),
+            'tech': copy.deepcopy(self.tech),
+            'custom_tech_names': copy.deepcopy(self.custom_tech_names),
+            'lvl_info': copy.deepcopy(self.lvl_info),
+            'script_content': self.script_content,
+            'visible_gate_slots': self.visible_gate_slots,
+            'visible_item_slots': self.visible_item_slots,
+            'visible_gem_slots': self.visible_gem_slots,
+        }
+
+    def mark_saved_state(self):
+        self._saved_document_snapshot = self.make_document_snapshot()
+        self.dirty = False
+
+    def has_unsaved_changes(self):
+        if not hasattr(self, "_saved_document_snapshot"):
+            return False
+        self.dirty = self.make_document_snapshot() != self._saved_document_snapshot
+        return self.dirty
+
+>>>>>>> 9935212 (Refactor code structure for improved readability and maintainability)
     def make_snapshot(self):
         return {
             'mw': self.mw,

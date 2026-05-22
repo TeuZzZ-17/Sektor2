@@ -11,6 +11,13 @@ import subprocess
 from sektor_constants import *
 
 class CanvasMixin:
+<<<<<<< HEAD
+=======
+    MAP_BORDER_TAG = "map_outer_border"
+    MAP_BORDER_COLOR = "#00FFFF"
+    HOVER_TAG = "map_hover_overlay"
+    HOVER_COLOR = "#B8F4FF"
+>>>>>>> 9935212 (Refactor code structure for improved readability and maintainability)
 
     OWNER_PANEL_LABELS = {
         0: "Neutral",
@@ -92,6 +99,35 @@ class CanvasMixin:
             final_text = final_text[:-1]
         return final_text, min_font, label_font.measure(final_text)
 
+<<<<<<< HEAD
+=======
+    def fit_cell_multiline_text(self, text, sz, min_font=4, max_font=None, padding=8):
+        lines = str(text).splitlines() or [str(text)]
+        min_font = int(min_font)
+        max_font = int(max_font if max_font is not None else max(8, sz // 4))
+        max_font = max(min_font, max_font)
+        max_width = max(1, int(sz - padding))
+        max_height = max(1, int(sz - padding))
+
+        for font_size in range(max_font, min_font - 1, -1):
+            label_font = self.get_cell_label_font(font_size)
+            line_height = label_font.metrics("linespace")
+            text_height = line_height * len(lines)
+            widest_line = max(label_font.measure(line) for line in lines)
+            if widest_line <= max_width and text_height <= max_height:
+                return "\n".join(lines), label_font
+
+        label_font = self.get_cell_label_font(min_font)
+        if label_font.metrics("linespace") * len(lines) > max_height:
+            return "", label_font
+
+        fitted_lines = []
+        for line in lines:
+            fitted_line, _, _ = self.fit_label_text(line, sz, min_font=min_font, max_font=min_font, padding=padding)
+            fitted_lines.append(fitted_line)
+        return "\n".join(fitted_lines), label_font
+
+>>>>>>> 9935212 (Refactor code structure for improved readability and maintainability)
     def draw_cell_label(self, x, y, sz, text, fill_color, text_color, tag, position="bottom"):
         label_text, font_size, text_width = self.fit_label_text(text, sz)
         label_font = self.get_cell_label_font(font_size)
@@ -218,18 +254,113 @@ class CanvasMixin:
             tags=tag
         )
 
+<<<<<<< HEAD
+=======
+    def clear_hover_overlay(self, event=None):
+        if hasattr(self, 'cv_map'):
+            self.cv_map.delete(self.HOVER_TAG)
+        self.hover_cell = None
+
+    def draw_hover_overlay(self, col, row):
+        if not hasattr(self, 'cv_map'):
+            return
+        self.cv_map.delete(self.HOVER_TAG)
+
+        sz = self.zoom_m
+        x = col * sz
+        y = row * sz
+        inset = max(3, min(6, sz // 8))
+        self.cv_map.create_rectangle(
+            x + inset,
+            y + inset,
+            x + sz - inset,
+            y + sz - inset,
+            outline=self.HOVER_COLOR,
+            width=1,
+            dash=(3, 2),
+            tags=self.HOVER_TAG
+        )
+        self.cv_map.tag_raise(self.MAP_BORDER_TAG)
+
+    def update_hover_from_event(self, event):
+        if self._map_panning:
+            self.clear_hover_overlay()
+            return
+
+        col = int(self.cv_map.canvasx(event.x) // self.zoom_m)
+        row = int(self.cv_map.canvasy(event.y) // self.zoom_m)
+        if not (0 <= col < self.mw and 0 <= row < self.mh):
+            self.clear_hover_overlay()
+            return
+
+        hover_cell = (col, row)
+        if hover_cell == getattr(self, "hover_cell", None):
+            self.cv_map.tag_raise(self.HOVER_TAG)
+            return
+
+        self.hover_cell = hover_cell
+        self.draw_hover_overlay(col, row)
+
+    def draw_map_outer_border(self):
+        if not hasattr(self, 'cv_map'):
+            return
+
+        self.cv_map.delete(self.MAP_BORDER_TAG)
+
+        sz = getattr(self, 'zoom_m', 0)
+        rows = getattr(self, 'mh', 0)
+        cols = getattr(self, 'mw', 0)
+        if sz <= 0 or rows <= 0 or cols <= 0:
+            return
+
+        width = 2 if sz >= 32 else 1
+        inset = max(1, width // 2)
+        self.cv_map.create_rectangle(
+            inset,
+            inset,
+            (cols * sz) - inset,
+            (rows * sz) - inset,
+            outline=self.MAP_BORDER_COLOR,
+            width=width,
+            tags=self.MAP_BORDER_TAG
+        )
+        self.cv_map.tag_raise(self.HOVER_TAG)
+        self.cv_map.tag_raise(self.MAP_BORDER_TAG)
+
+>>>>>>> 9935212 (Refactor code structure for improved readability and maintainability)
     def draw_special_icon(self, x, y, sz, tag, icon_key):
         img = self.get_img('special', icon_key, sz)
         if img:
             self.cv_map.create_image(x, y, image=img, anchor=tk.NW, tags=tag)
 
+<<<<<<< HEAD
+=======
+    def get_unknown_id_label(self, cat, hex_id):
+        try:
+            val_int = int(hex_id, 16)
+            return self.custom_definitions[cat].get(val_int, "GHOST")
+        except:
+            return "GHOST"
+
+    def get_height_tint_color(self, editor_height, base_color):
+        if editor_height > EDITOR_HEIGHT_BASE:
+            return HEIGHT_HIGH_COLOR
+        if editor_height < EDITOR_HEIGHT_BASE:
+            return HEIGHT_LOW_COLOR
+        return base_color
+
+>>>>>>> 9935212 (Refactor code structure for improved readability and maintainability)
     def draw_height_overlay(self, x, y, sz, editor_height, tag):
         delta = editor_height - EDITOR_HEIGHT_BASE
         visual_delta = max(-15, min(15, delta))
         center_y = y + (sz // 2)
         fill_h = int((abs(visual_delta) / 15.0) * (sz / 2))
 
+<<<<<<< HEAD
         self.cv_map.create_rectangle(x, y, x + sz, y + sz, fill="#000000", outline="", stipple="gray12", tags=tag)
+=======
+        self.cv_map.create_rectangle(x, y, x + sz, y + sz, fill="#202020", outline="", stipple="gray12", tags=tag)
+>>>>>>> 9935212 (Refactor code structure for improved readability and maintainability)
 
         if visual_delta > 0 and fill_h > 0:
             self.cv_map.create_rectangle(
@@ -242,21 +373,32 @@ class CanvasMixin:
                 fill=HEIGHT_LOW_COLOR, outline="", stipple="gray50", tags=tag
             )
 
+<<<<<<< HEAD
         line_w = max(1, sz // 28)
         self.cv_map.create_line(
             x + 2, center_y, x + sz - 2, center_y,
             fill="#FFFFFF", width=line_w, tags=tag
         )
 
+=======
+>>>>>>> 9935212 (Refactor code structure for improved readability and maintainability)
     def draw_height_number(self, x, y, sz, editor_height, tag):
         text = str(editor_height)
         if self.mode == "HGT":
             font = ("Arial", max(6, sz // 8), "bold")
+<<<<<<< HEAD
+=======
+            text_color = self.get_height_tint_color(editor_height, "#FFFFFF")
+>>>>>>> 9935212 (Refactor code structure for improved readability and maintainability)
             self.cv_map.create_text(
                 x + 3,
                 y + 2,
                 text=text,
+<<<<<<< HEAD
                 fill="#FF0000",
+=======
+                fill=text_color,
+>>>>>>> 9935212 (Refactor code structure for improved readability and maintainability)
                 font=font,
                 anchor=tk.NW,
                 tags=tag
@@ -275,9 +417,17 @@ class CanvasMixin:
                 width=1
             )
 
+<<<<<<< HEAD
     def draw_cell(self, c, r):
         sz = self.zoom_m; x, y = c*sz, r*sz; tag = f"c_{c}_{r}"
         self.cv_map.delete(tag)
+=======
+    def draw_cell(self, c, r, refresh_border=True):
+        sz = self.zoom_m; x, y = c*sz, r*sz; tag = f"c_{c}_{r}"
+        self.cv_map.delete(tag)
+        if refresh_border:
+            self.cv_map.delete(self.MAP_BORDER_TAG)
+>>>>>>> 9935212 (Refactor code structure for improved readability and maintainability)
 
         # RULER LOGIC
         if r == 0 or r == self.mh - 1 or c == 0 or c == self.mw - 1:
@@ -288,6 +438,11 @@ class CanvasMixin:
             if (r == 0 or r == self.mh - 1) and (0 < c < self.mw - 1): txt = str(c)
             elif (c == 0 or c == self.mw - 1) and (0 < r < self.mh - 1): txt = str(r)
             if txt: self.cv_map.create_text(x + sz//2, y + sz//2, text=txt, fill="#00FFFF", font=("Arial", max(8, sz//3), "bold"), tags=tag)
+<<<<<<< HEAD
+=======
+            if refresh_border:
+                self.draw_map_outer_border()
+>>>>>>> 9935212 (Refactor code structure for improved readability and maintainability)
             return
 
         # --- STANDARD MAP RENDERING (BASE LAYER) ---
@@ -302,6 +457,11 @@ class CanvasMixin:
 
         if self.clear_view and self.mode == "HGT":
             self.cv_map.create_rectangle(x,y,x+sz,y+sz, outline=GRID_COLOR, tags=tag)
+<<<<<<< HEAD
+=======
+            if refresh_border:
+                self.draw_map_outer_border()
+>>>>>>> 9935212 (Refactor code structure for improved readability and maintainability)
             return
 
         if self.mode == "HGT":
@@ -309,6 +469,11 @@ class CanvasMixin:
             self.draw_height_overlay(x, y, sz, editor_height, tag)
             self.cv_map.create_rectangle(x, y, x+sz, y+sz, outline="#3A3A3A", width=1, tags=tag)
             self.draw_height_number(x, y, sz, editor_height, tag)
+<<<<<<< HEAD
+=======
+            if refresh_border:
+                self.draw_map_outer_border()
+>>>>>>> 9935212 (Refactor code structure for improved readability and maintainability)
             return
 
         # 3. Custom Sector Outline & Logic (Transparent center)
@@ -317,7 +482,15 @@ class CanvasMixin:
             # Only Red Border, no fill (Transparent)
             self.cv_map.create_rectangle(x,y,x+sz,y+sz, outline=CUSTOM_BORDER_COLOR, width=2, tags=tag)
 
+<<<<<<< HEAD
         if self.clear_view: self.cv_map.create_rectangle(x,y,x+sz,y+sz, outline=GRID_COLOR, tags=tag); return
+=======
+        if self.clear_view:
+            self.cv_map.create_rectangle(x,y,x+sz,y+sz, outline=GRID_COLOR, tags=tag)
+            if refresh_border:
+                self.draw_map_outer_border()
+            return
+>>>>>>> 9935212 (Refactor code structure for improved readability and maintainability)
 
         # 4. Building Layer
         bid = self.grids['blg'][r][c]
@@ -331,7 +504,11 @@ class CanvasMixin:
                  self.cv_map.create_rectangle(x+1,y+1,x+sz-1,y+sz-1, outline=CUSTOM_BORDER_COLOR, width=3, tags=tag)
             self.draw_building_overlays(x, y, sz, bid, tag)
 
+<<<<<<< HEAD
         # --- MOD: TEXT RENDERING PRIORITY & COLOR UNIFICATION ---
+=======
+        # --- TEXT RENDERING PRIORITY & COLOR UNIFICATION ---
+>>>>>>> 9935212 (Refactor code structure for improved readability and maintainability)
         # Rule: Show Building Text if present. Else Show Sector Text if present.
         # Color: Yellow (#FFFF00) for both.
         # Format: ID \n Name
@@ -339,14 +516,19 @@ class CanvasMixin:
         text_to_draw = None
         
         if is_custom_building:
+<<<<<<< HEAD
             try:
                  val_int = int(bid, 16)
                  name = self.custom_definitions['blg'].get(val_int, "MOD")
             except: name = "MOD"
+=======
+            name = self.get_unknown_id_label('blg', bid)
+>>>>>>> 9935212 (Refactor code structure for improved readability and maintainability)
             text_to_draw = f"{bid}\n{name}"
             
         elif is_custom_sector:
             # Only draw sector text if building text is NOT drawn
+<<<<<<< HEAD
             try:
                 val_int = int(tid, 16)
                 name = self.custom_definitions['type'].get(val_int, "MOD")
@@ -356,6 +538,15 @@ class CanvasMixin:
         if text_to_draw:
              f_size = max(8, sz // 4)
              self.cv_map.create_text(x+sz//2, y+sz//2, text=text_to_draw, fill="#FFFF00", font=("Arial", int(f_size), "bold"), justify=tk.CENTER, tags=tag)
+=======
+            name = self.get_unknown_id_label('type', tid)
+            text_to_draw = f"{tid}\n{name}"
+
+        if text_to_draw:
+             label_text, label_font = self.fit_cell_multiline_text(text_to_draw, sz)
+             if label_text:
+                 self.cv_map.create_text(x+sz//2, y+sz//2, text=label_text, fill="#FFFF00", font=label_font, justify=tk.CENTER, tags=tag)
+>>>>>>> 9935212 (Refactor code structure for improved readability and maintainability)
 
 
         # --- GLOW LOGIC ---
@@ -442,14 +633,28 @@ class CanvasMixin:
 
         self.cv_map.create_rectangle(x,y,x+sz,y+sz, outline=GRID_COLOR, tags=tag)
         self.draw_height_number(x, y, sz, self.get_editor_height_value(r, c), tag)
+<<<<<<< HEAD
+=======
+        if refresh_border:
+            self.draw_map_outer_border()
+>>>>>>> 9935212 (Refactor code structure for improved readability and maintainability)
 
     def draw_grid(self):
         if not hasattr(self, 'cv_map'): return
         self.cv_map.delete("all")
+<<<<<<< HEAD
         rows = getattr(self, 'mh', DEFAULT_H)
         cols = getattr(self, 'mw', DEFAULT_W)
         for r in range(rows):
             for c in range(cols): self.draw_cell(c, r)
+=======
+        self.hover_cell = None
+        rows = getattr(self, 'mh', DEFAULT_H)
+        cols = getattr(self, 'mw', DEFAULT_W)
+        for r in range(rows):
+            for c in range(cols): self.draw_cell(c, r, refresh_border=False)
+        self.draw_map_outer_border()
+>>>>>>> 9935212 (Refactor code structure for improved readability and maintainability)
         self.cv_map.config(scrollregion=(0,0,self.mw*self.zoom_m, self.mh*self.zoom_m))
 
     def draw_palette(self, e=None):
@@ -604,6 +809,10 @@ class CanvasMixin:
         else:
             self.cv_map.yview_moveto(0.0)
 
+<<<<<<< HEAD
+=======
+        self.update_hover_from_event(event)
+>>>>>>> 9935212 (Refactor code structure for improved readability and maintainability)
         return "break"
 
     def bind_scroll(self, w):
@@ -658,6 +867,10 @@ class CanvasMixin:
     def on_map_left_press(self, event):
         if self.space_pan_active:
             return self.start_map_pan(event, source="space_left")
+<<<<<<< HEAD
+=======
+        self.update_hover_from_event(event)
+>>>>>>> 9935212 (Refactor code structure for improved readability and maintainability)
         if self.mode in ["TYPE", "OWN", "BLG", "HGT", "GATE", "ITEM", "GEM", "SQUAD", "HOST"] and not self._map_edit_snapshot_taken:
             self.push_undo_snapshot()
             self._map_edit_snapshot_taken = True
@@ -666,6 +879,10 @@ class CanvasMixin:
     def on_map_left_drag(self, event):
         if self._map_panning and self._map_pan_source == "space_left":
             return self.drag_map_pan(event)
+<<<<<<< HEAD
+=======
+        self.update_hover_from_event(event)
+>>>>>>> 9935212 (Refactor code structure for improved readability and maintainability)
         return self.on_click(event)
 
     def on_map_left_release(self, event):
@@ -681,6 +898,10 @@ class CanvasMixin:
     def start_map_pan(self, event, source="middle"):
         self._map_panning = True
         self._map_pan_source = source
+<<<<<<< HEAD
+=======
+        self.clear_hover_overlay()
+>>>>>>> 9935212 (Refactor code structure for improved readability and maintainability)
         self.cv_map.focus_set()
         self.cv_map.scan_mark(event.x, event.y)
         self.cv_map.config(cursor="fleur")
@@ -696,6 +917,11 @@ class CanvasMixin:
         self._map_panning = False
         self._map_pan_source = None
         self.cv_map.config(cursor="")
+<<<<<<< HEAD
+=======
+        if event is not None:
+            self.update_hover_from_event(event)
+>>>>>>> 9935212 (Refactor code structure for improved readability and maintainability)
         return "break"
 
     def on_click(self, e):
@@ -964,12 +1190,21 @@ class CanvasMixin:
             self.upd_lbl(); self.draw_palette()
 
     def on_mouse_move(self, e):
+<<<<<<< HEAD
+=======
+        self.update_hover_from_event(e)
+>>>>>>> 9935212 (Refactor code structure for improved readability and maintainability)
         if self._map_panning:
             return
         if self.mode in ["TYPE", "OWN", "BLG", "HGT"]: return
 
         cx = int(self.cv_map.canvasx(e.x)//self.zoom_m)
         cy = int(self.cv_map.canvasy(e.y)//self.zoom_m)
+<<<<<<< HEAD
+=======
+        if not (0 <= cx < self.mw and 0 <= cy < self.mh):
+            return
+>>>>>>> 9935212 (Refactor code structure for improved readability and maintainability)
         world_x, world_z = self.grid_to_world(cx, cy)
 
         if hasattr(self, 'lbl_sel'):
