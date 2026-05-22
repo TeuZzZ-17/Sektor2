@@ -51,7 +51,14 @@ class DialogMixin:
             self.mw, self.mh = w, h
             self.reset_map(False, track_history=False)
             self.clear_history()
+<<<<<<< HEAD
             self.mark_saved_state()
+=======
+<<<<<<< HEAD
+=======
+            self.mark_saved_state()
+>>>>>>> 9935212 (Refactor code structure for improved readability and maintainability)
+>>>>>>> 960ab1aa40a49cce6e2d2ab9956235aab9074263
         else:
             self.root.destroy()
 
@@ -100,7 +107,14 @@ class DialogMixin:
 
         self.reset_map(confirm=False, track_history=False)
         self.clear_history()
+<<<<<<< HEAD
         self.mark_saved_state()
+=======
+<<<<<<< HEAD
+=======
+        self.mark_saved_state()
+>>>>>>> 9935212 (Refactor code structure for improved readability and maintainability)
+>>>>>>> 960ab1aa40a49cce6e2d2ab9956235aab9074263
         self.set_mode("TYPE")
         self.refresh_palette_layout(force_full=True)
         self.refresh_map_layout(force_full=True)
