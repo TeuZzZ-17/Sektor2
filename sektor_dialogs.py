@@ -51,6 +51,7 @@ class DialogMixin:
             self.mw, self.mh = w, h
             self.reset_map(False, track_history=False)
             self.clear_history()
+            self.mark_saved_state()
         else:
             self.root.destroy()
 
@@ -99,6 +100,7 @@ class DialogMixin:
 
         self.reset_map(confirm=False, track_history=False)
         self.clear_history()
+        self.mark_saved_state()
         self.set_mode("TYPE")
         self.refresh_palette_layout(force_full=True)
         self.refresh_map_layout(force_full=True)

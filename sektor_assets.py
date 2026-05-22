@@ -48,10 +48,10 @@ class AssetMixin:
     def load_standard_icons(self, include_custom_tile_icons=False):
         self.ensure_asset_dir("icons")
         if include_custom_tile_icons:
-            self.load_icon("custom_sector.png", "custom_sector", "#FF0000", "SEC\nMOD")
-            self.load_icon("custom_building.png", "custom_building", "#FF0000", "BLG\nMOD")
+            self.load_icon("custom_sector.png", "custom_sector", "#FF0000", "SEC\nGHOST")
+            self.load_icon("custom_building.png", "custom_building", "#FF0000", "BLG\nGHOST")
 
-        self.load_icon("custom.png", "custom_mod", "#FF00FF", "MOD")
+        self.load_icon("custom.png", "custom_mod", "#FF00FF", "GHOST")
         self.load_icon("gate.png", "gate", "#00FFFF", "GATE")
         self.load_icon("key.png", "key", "#FFFF00", "KEY")
         self.load_icon("superitem.png", "item", "#FF00FF", "ITEM")

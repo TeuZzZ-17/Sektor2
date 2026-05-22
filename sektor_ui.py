@@ -200,6 +200,7 @@ class UIMixin:
         self.cv_map.bind("<Button-1>", self.on_map_left_press)
         self.cv_map.bind("<B1-Motion>", self.on_map_left_drag)
         self.cv_map.bind("<ButtonRelease-1>", self.on_map_left_release)
+        self.cv_map.bind("<Leave>", self.clear_hover_overlay)
         self.cv_map.bind("<Button-3>", self.on_right_click); self.cv_map.bind("<B3-Motion>", self.on_right_click)
         self.cv_map.bind("<ButtonPress-2>", self.start_map_pan_middle)
         self.cv_map.bind("<B2-Motion>", self.drag_map_pan)
