@@ -6,20 +6,4 @@ The editor converts user-created map data into Urban Assault-compatible level fi
 
 SEKTOR was originally developed and tested on Linux, but is now fully functional on modern Windows systems using Python 3.
 
-Requirements:
-
-* Python 3.13+
-* Pillow library
-
-Install Pillow:
-
-pip install pillow
-
-Project status:
-
-Sektor 2 is currently in active development and experimental state.
-The editor works, but parts of the codebase are still being cleaned, consolidated and improved.
-
-Goals for future versions:
-
 This project is part of ongoing preservation efforts surrounding Urban Assault and OpenUA.

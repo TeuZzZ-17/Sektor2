@@ -1,3 +1,7 @@
+# Sektor
+# Copyright (c) 2025 TeuZzZ
+# Licensed under GNU GPL v3
+
 import tkinter as tk
 import os
 import sys
