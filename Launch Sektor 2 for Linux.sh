@@ -1,3 +1,3 @@
 #!/usr/bin/env bash
 cd "$(dirname "$0")"
-python3 Sektor.py
+python3 Sektor.py "$@"

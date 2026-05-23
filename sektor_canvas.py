@@ -1,6 +1,6 @@
 import tkinter as tk
 import tkinter.font as tkfont
-from tkinter import filedialog, messagebox, simpledialog, ttk
+from tkinter import filedialog, messagebox, ttk
 from PIL import Image, ImageTk, ImageDraw
 import os
 import copy
@@ -10,6 +10,7 @@ import subprocess
 import time
 
 from sektor_constants import *
+from sektor_paths import resource_path
 
 class CanvasMixin:
     MAP_BORDER_TAG = "map_outer_border"
@@ -29,24 +30,46 @@ class CanvasMixin:
     }
 
     def has_main_object(self, cx, cy, exclude_mode=None, exclude_slot=None):
-        for i in range(1, 9):
+        for i in range(1, MAX_SPECIAL_SLOTS + 1):
             if exclude_mode == "GATE" and exclude_slot == i: continue
             if self.gates[i]['x'] == cx and self.gates[i]['y'] == cy: return True
 
-        for i in range(1, 9):
+        for i in range(1, MAX_SPECIAL_SLOTS + 1):
             if exclude_mode == "ITEM" and exclude_slot == i: continue
             if self.items[i]['x'] == cx and self.items[i]['y'] == cy: return True
 
-        for i in range(1, 9):
+        for i in range(1, MAX_SPECIAL_SLOTS + 1):
             if exclude_mode == "GEM" and exclude_slot == i: continue
             if self.gems[i]['x'] == cx and self.gems[i]['y'] == cy: return True
         return False
 
     def has_key(self, cx, cy):
-        for i in range(1, 9):
+        for i in range(1, MAX_SPECIAL_SLOTS + 1):
             if (cx, cy) in self.gates[i]['keys']: return True
             if (cx, cy) in self.items[i]['keys']: return True
         return False
+
+    def can_place_special_key(self, cx, cy, current_data=None, dragging_key_list=None, dragging_key_idx=-1):
+        if current_data and current_data.get('x') == cx and current_data.get('y') == cy:
+            return False, "parent"
+
+        for gate in self.gates.values():
+            for idx, key_cell in enumerate(gate['keys']):
+                if key_cell != (cx, cy):
+                    continue
+                if gate['keys'] is dragging_key_list and idx == dragging_key_idx:
+                    continue
+                return False, "key"
+
+        for item in self.items.values():
+            for idx, key_cell in enumerate(item['keys']):
+                if key_cell != (cx, cy):
+                    continue
+                if item['keys'] is dragging_key_list and idx == dragging_key_idx:
+                    continue
+                return False, "key"
+
+        return True, None
 
     def has_squad(self, cx, cy, exclude_index=None):
         for i, s in enumerate(self.squads):
@@ -247,6 +270,31 @@ class CanvasMixin:
             outline=color,
             width=width,
             tags=tag
+        )
+
+    def draw_owner_indicator(self, x, y, sz, fid, tag):
+        base_color = FACTION_MAP_COLORS.get(fid, FACTIONS.get(fid, (None, None))[1])
+        if not base_color:
+            return
+
+        if fid in FACTION_MAP_OUTLINES:
+            outline_color = FACTION_MAP_OUTLINES[fid]
+            self.cv_map.create_rectangle(
+                x + 2, y + 2,
+                x + sz - 2, y + sz - 2,
+                outline=outline_color, width=1, tags=tag
+            )
+            self.cv_map.create_rectangle(
+                x + 4, y + 4,
+                x + sz - 4, y + sz - 4,
+                outline=base_color, width=2, tags=tag
+            )
+            return
+
+        self.cv_map.create_rectangle(
+            x + 1, y + 1,
+            x + sz - 1, y + sz - 1,
+            outline=base_color, width=1, tags=tag
         )
 
     def add_render_index_entry(self, index, cell, value):
@@ -596,45 +644,37 @@ class CanvasMixin:
         # --- GLOW LOGIC ---
         glow_width = 3
 
-        # BEAMGATES
+        # Main special objects first; keysector overlays are drawn after them.
         for i in self.render_gate_objects_by_cell.get((c, r), []):
             self.draw_special_icon(x, y, sz, tag, 'gate')
             if self.mode == "GATE" and i == self.current_gate_slot:
                  self.draw_cell_outline(x, y, sz, tag, width=glow_width, inset=2)
 
-        for i in self.render_gate_keys_by_cell.get((c, r), []):
-            self.draw_special_icon(x, y, sz, tag, 'key')
-            if self.mode == "GATE" and i == self.current_gate_slot:
-                 self.draw_cell_outline(x, y, sz, tag, width=glow_width, inset=2)
-
-        # BOMBS
         for i in self.render_item_objects_by_cell.get((c, r), []):
             self.draw_special_icon(x, y, sz, tag, 'item')
             if self.mode == "ITEM" and i == self.current_item_slot:
                  self.draw_cell_outline(x, y, sz, tag, width=glow_width, inset=2)
 
-        for i in self.render_item_keys_by_cell.get((c, r), []):
-            self.draw_special_icon(x, y, sz, tag, 'item_key')
-            if self.mode == "ITEM" and i == self.current_item_slot:
-                 self.draw_cell_outline(x, y, sz, tag, width=glow_width, inset=2)
-
-        # GEMS
         for i in self.render_gems_by_cell.get((c, r), []):
             self.draw_special_icon(x, y, sz, tag, 'gem')
             if self.mode == "GEM" and i == self.current_gem_slot:
                  self.draw_cell_outline(x, y, sz, tag, width=glow_width, inset=2)
 
+        gate_key_slots_here = self.render_gate_keys_by_cell.get((c, r), [])
+        for i in self.render_item_keys_by_cell.get((c, r), []):
+            if not gate_key_slots_here:
+                self.draw_special_icon(x, y, sz, tag, 'item_key')
+            if self.mode == "ITEM" and i == self.current_item_slot:
+                 self.draw_cell_outline(x, y, sz, tag, width=glow_width, inset=2)
+
+        for i in gate_key_slots_here:
+            self.draw_special_icon(x, y, sz, tag, 'key')
+            if self.mode == "GATE" and i == self.current_gate_slot:
+                 self.draw_cell_outline(x, y, sz, tag, width=glow_width, inset=2)
+
         fid = self.grids['own'][r][c]
         if fid != 0:
-            f_col = FACTIONS.get(fid, (None, None))[1]
-            if f_col:
-                owner_inset = 1
-                owner_width = 1
-                self.cv_map.create_rectangle(
-                    x + owner_inset, y + owner_inset,
-                    x + sz - owner_inset, y + sz - owner_inset,
-                    outline=f_col, width=owner_width, tags=tag
-                )
+            self.draw_owner_indicator(x, y, sz, fid, tag)
 
         if bid != '00' and not is_custom_building:
             self.draw_building_markers(x, y, sz, tag)
@@ -646,10 +686,14 @@ class CanvasMixin:
             i, h = hosts_here[-1]
             f_col = FACTIONS[h['owner']][1] if FACTIONS[h['owner']][1] else "#FFF"
             self.cv_map.create_rectangle(x+2, y+2, x+sz-2, y+sz-2, outline=f_col, width=3, tags=tag)
-            img = self.get_img('host', h['veh'], sz)
-            if img: self.cv_map.create_image(x,y,image=img, anchor=tk.NW, tags=tag)
             vname = h['custom_name']
             if not vname: vname = self.defs['host'].get(h['veh'], "Unknown")
+            has_known_host_name = bool(h.get('custom_name')) or h['veh'] in self.defs['host']
+            host_icon_key = f"host_{h['veh']}"
+            has_host_icon = host_icon_key in self.assets or os.path.exists(resource_path(os.path.join("icons", f"{h['veh']}.png")))
+            if has_host_icon or not has_known_host_name:
+                img = self.get_img('host', h['veh'], sz)
+                if img: self.cv_map.create_image(x,y,image=img, anchor=tk.NW, tags=tag)
             txt_col = "black" if h['owner'] in [2,3,4] else "white"
             squad_indexes_here = self.render_squads_by_cell.get((c, r), [])
             squads_here = [(i, self.squads[i]) for i in squad_indexes_here]
@@ -926,6 +970,11 @@ class CanvasMixin:
         self._map_edit_snapshot_taken = False
         self.on_release(event)
 
+    def on_map_right_release(self, event):
+        self._map_right_edit_snapshot_taken = False
+        self.on_release(event)
+        return "break"
+
     def start_map_pan_middle(self, event):
         return self.start_map_pan(event, source="middle")
 
@@ -977,6 +1026,15 @@ class CanvasMixin:
                     if self._drag_key_idx < len(self._drag_key_list):
                         old_x, old_y = self._drag_key_list[self._drag_key_idx]
                         if (old_x != cx or old_y != cy):
+                            can_place, _ = self.can_place_special_key(
+                                cx,
+                                cy,
+                                current_data=current_data,
+                                dragging_key_list=self._drag_key_list,
+                                dragging_key_idx=self._drag_key_idx
+                            )
+                            if not can_place:
+                                return
                             self._drag_key_list[self._drag_key_idx] = (cx, cy)
                             self.invalidate_render_indexes()
                             self.redraw_cells((old_x, old_y), (cx, cy))
@@ -985,7 +1043,10 @@ class CanvasMixin:
                 # 2. Main Object Dragging Logic (ONLY if NOT using KEY tool)
                 if tool != "KEY" and current_data['x'] != -1:
                         if current_data['x'] != cx or current_data['y'] != cy:
-                             if not self.has_main_object(cx, cy, self.mode, current_slot):
+                             if (
+                                 not self.has_main_object(cx, cy, self.mode, current_slot) and
+                                 (self.mode not in ["GATE", "ITEM"] or (cx, cy) not in current_data['keys'])
+                             ):
                                  ox, oy = current_data['x'], current_data['y']
                                  current_data['x'], current_data['y'] = cx, cy
                                  self.invalidate_render_indexes()
@@ -995,17 +1056,19 @@ class CanvasMixin:
             # B. CLICK (PLACEMENT)
             if str(e.type) == '4':
                 if (self.mode == "GATE" and tool == "KEY") or (self.mode == "ITEM" and tool == "KEY"):
-                    if current_data['x'] == cx and current_data['y'] == cy:
-                        messagebox.showwarning("Error", "Cannot place Key on Parent Object!"); return
-                    if self.has_key(cx, cy) and (cx, cy) not in current_data['keys']:
-                        messagebox.showwarning("Occupied", "Tile has a Key!"); return
-                    if self.has_main_object(cx, cy):
-                        messagebox.showwarning("Occupied", "Cannot place Key on Object!"); return
-
                     if (cx, cy) in current_data['keys']:
                         self._drag_key_list = current_data['keys']
                         self._drag_key_idx = current_data['keys'].index((cx, cy))
                     else:
+                        can_place, reason = self.can_place_special_key(cx, cy, current_data=current_data)
+                        if not can_place:
+                            if reason == "parent":
+                                messagebox.showwarning("Error", "Cannot place Key on Parent Object!")
+                            elif reason == "key":
+                                messagebox.showwarning("Occupied", "Tile has a Key!")
+                            else:
+                                messagebox.showwarning("Occupied", "Cannot place Key here!")
+                            return
                         current_data['keys'].append((cx, cy))
                         self.invalidate_render_indexes()
                         self.redraw_cells((cx, cy))
@@ -1161,6 +1224,16 @@ class CanvasMixin:
         cx, cy = int(self.cv_map.canvasx(e.x)//self.zoom_m), int(self.cv_map.canvasy(e.y)//self.zoom_m)
         if not (0<=cx<self.mw and 0<=cy<self.mh): return
 
+        if self.mode != "HGT":
+            if cx == 0 or cx == self.mw - 1 or cy == 0 or cy == self.mh - 1:
+                return
+
+        def push_right_undo_once():
+            if not getattr(self, "_map_right_edit_snapshot_taken", False):
+                self.push_undo_snapshot()
+                self._map_right_edit_snapshot_taken = True
+            self.dirty = True
+
         # SQUAD REMOVAL
         if self.mode == "SQUAD":
              previous_cell = self.get_squad_cell(self.current_squad_index)
@@ -1168,7 +1241,7 @@ class CanvasMixin:
              for i in reversed(range(len(self.squads))):
                     s = self.squads[i]
                     if s['x'] == cx and s['y'] == cy:
-                        self.push_undo_snapshot()
+                        push_right_undo_once()
                         self.squads.pop(i)
                         self.invalidate_render_indexes()
                         self.redraw_cells(previous_cell, (cx, cy))
@@ -1184,7 +1257,7 @@ class CanvasMixin:
              for i in reversed(range(len(self.host_stations))):
                     h = self.host_stations[i]
                     if h['x'] == cx and h['y'] == cy:
-                        self.push_undo_snapshot()
+                        push_right_undo_once()
                         self.host_stations.pop(i)
                         self.invalidate_render_indexes()
                         self.redraw_cells(previous_cell, (cx, cy))
@@ -1193,35 +1266,59 @@ class CanvasMixin:
                     self.redraw_cells(previous_cell)
              return
 
-        if self.mode in ["TYPE", "OWN", "BLG", "HGT"]: self.pick(e); return
+        if self.mode == "TYPE":
+            if self.grids['type'][cy][cx] != '00':
+                push_right_undo_once()
+                self.grids['type'][cy][cx] = '00'
+                self.redraw_cells((cx, cy))
+            return
+        if self.mode == "OWN":
+            if self.grids['own'][cy][cx] != 0:
+                push_right_undo_once()
+                self.grids['own'][cy][cx] = 0
+                self.redraw_cells((cx, cy))
+            return
+        if self.mode == "BLG":
+            if self.grids['blg'][cy][cx] != '00':
+                push_right_undo_once()
+                self.grids['blg'][cy][cx] = '00'
+                self.redraw_cells((cx, cy))
+            return
+        if self.mode == "HGT":
+            if self.grids['hgt'][cy][cx] != DEFAULT_HGT:
+                push_right_undo_once()
+                self.grids['hgt'][cy][cx] = DEFAULT_HGT
+                self.redraw_cells((cx, cy))
+            return
+
         if self.mode == "GATE":
             for i, g in self.gates.items():
                 if g['x'] == cx and g['y'] == cy:
-                    self.push_undo_snapshot()
+                    push_right_undo_once()
                     g['x'] = -1; g['y'] = -1
                     self.invalidate_render_indexes()
                     self.redraw_cells((cx, cy)); return
                 if (cx, cy) in g['keys']:
-                    self.push_undo_snapshot()
+                    push_right_undo_once()
                     g['keys'].remove((cx, cy))
                     self.invalidate_render_indexes()
                     self.redraw_cells((cx, cy)); return
         elif self.mode == "ITEM":
             for i, it in self.items.items():
                 if it['x'] == cx and it['y'] == cy:
-                    self.push_undo_snapshot()
+                    push_right_undo_once()
                     it['x'] = -1; it['y'] = -1
                     self.invalidate_render_indexes()
                     self.redraw_cells((cx, cy)); return
                 if (cx, cy) in it['keys']:
-                    self.push_undo_snapshot()
+                    push_right_undo_once()
                     it['keys'].remove((cx, cy))
                     self.invalidate_render_indexes()
                     self.redraw_cells((cx, cy)); return
         elif self.mode == "GEM":
             for i, gm in self.gems.items():
                 if gm['x'] == cx and gm['y'] == cy:
-                    self.push_undo_snapshot()
+                    push_right_undo_once()
                     gm['x'] = -1; gm['y'] = -1
                     self.invalidate_render_indexes()
                     self.redraw_cells((cx, cy)); return
@@ -1241,18 +1338,19 @@ class CanvasMixin:
 
     def pick(self, e):
         cx, cy = int(self.cv_map.canvasx(e.x)//self.zoom_m), int(self.cv_map.canvasy(e.y)//self.zoom_m)
-        if 0<=cx<self.mw:
-            if self.mode=="TYPE": self.sel['type']=self.grids['type'][cy][cx]
-            elif self.mode=="OWN": self.sel['own']=self.grids['own'][cy][cx]
-            elif self.mode=="HGT":
-                new_hgt = self.grids['hgt'][cy][cx]; self.sel['hgt']=new_hgt;
-                if hasattr(self, 'update_height_ui_after_value_change'):
-                    self.update_height_ui_after_value_change()
-                elif hasattr(self, 'hgt_entry'):
-                    user_val = new_hgt - HGT_MIN
-                    self.hgt_entry.delete(0, tk.END); self.hgt_entry.insert(0, str(user_val))
-            elif self.mode=="BLG": self.sel['blg']=self.grids['blg'][cy][cx]
-            self.upd_lbl(); self.draw_palette()
+        if not (0 <= cx < self.mw and 0 <= cy < self.mh):
+            return
+        if self.mode=="TYPE": self.sel['type']=self.grids['type'][cy][cx]
+        elif self.mode=="OWN": self.sel['own']=self.grids['own'][cy][cx]
+        elif self.mode=="HGT":
+            new_hgt = self.grids['hgt'][cy][cx]; self.sel['hgt']=new_hgt;
+            if hasattr(self, 'update_height_ui_after_value_change'):
+                self.update_height_ui_after_value_change()
+            elif hasattr(self, 'hgt_entry'):
+                user_val = new_hgt - HGT_MIN
+                self.hgt_entry.delete(0, tk.END); self.hgt_entry.insert(0, str(user_val))
+        elif self.mode=="BLG": self.sel['blg']=self.grids['blg'][cy][cx]
+        self.upd_lbl(); self.draw_palette()
 
     def on_mouse_move(self, e):
         self.update_hover_from_event(e)

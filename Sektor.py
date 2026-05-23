@@ -1,4 +1,6 @@
 import tkinter as tk
+import os
+import sys
 
 from sektor_constants import *
 from sektor_history import HistoryMixin
@@ -17,24 +19,38 @@ class SektorEditor(
     MapIOMixin,
     DialogMixin,
 ):
-    def __init__(self, root):
+    def __init__(self, root, startup_file=None):
         self.root = root
         self.root.title(APP_NAME)
 
         self.root.option_add("*Entry.selectBackground", "#3399FF")
         self.root.option_add("*Entry.selectForeground", "white")
 
+        startup_file = os.path.abspath(startup_file) if startup_file else None
+        if startup_file and (not os.path.isfile(startup_file) or not startup_file.lower().endswith(".ldf")):
+            startup_file = None
+        self.startup_file = startup_file
+
         # 1. Initialization
-        self.set_folder = self.ask_set()
-        if not self.set_folder:
-            root.destroy()
-            return
+        startup_map_settings = None
+        if self.startup_file:
+            self.set_folder = self.detect_ldf_set_folder(self.startup_file) or "set1"
+        else:
+            startup_map_settings = self.ask_new_map_settings(title=APP_NAME)
+            if not startup_map_settings:
+                root.destroy()
+                return
+            self.set_folder = startup_map_settings['set_folder']
 
         self.current_filename = None 
+        self.current_filepath = None
         self.update_window_title()
 
         # 2. State & Data
-        self.mw, self.mh = DEFAULT_W, DEFAULT_H
+        if startup_map_settings:
+            self.mw, self.mh = startup_map_settings['width'], startup_map_settings['height']
+        else:
+            self.mw, self.mh = DEFAULT_W, DEFAULT_H
         self.zoom_m, self.zoom_p = 64, 128
         self.zoom_m_min = 32
         self.zoom_m_max = 192
@@ -59,6 +75,7 @@ class SektorEditor(
         self.max_history = 100
         self.dirty = False
         self._map_edit_snapshot_taken = False
+        self._map_right_edit_snapshot_taken = False
         self.hover_cell = None
 
         # LEVEL INFO
@@ -73,12 +90,12 @@ class SektorEditor(
         self.script_content = ""
         self.grids = {}
 
-        # MULTI-SLOT SYSTEM (Max 8)
-        self.gates = {i: {'active': False, 'x': -1, 'y': -1, 'keys': [], 'target': 0, 'closed_bp': 25, 'opened_bp': 26} for i in range(1, 9)}
+        # MULTI-SLOT SYSTEM
+        self.gates = {i: {'active': False, 'x': -1, 'y': -1, 'keys': [], 'target': 0, 'closed_bp': 25, 'opened_bp': 26, 'hidden': False} for i in range(1, MAX_SPECIAL_SLOTS + 1)}
         self.items = {i: {'active': False, 'x': -1, 'y': -1, 'keys': [], 'countdown': 300000,
-                          'inactive_bp': 35, 'active_bp': 36, 'trigger_bp': 37, 'type': 1} for i in range(1, 9)}
+                          'inactive_bp': 35, 'active_bp': 36, 'trigger_bp': 37, 'type': 1, 'hidden': False} for i in range(1, MAX_SPECIAL_SLOTS + 1)}
 
-        self.gems = {i: {'x': -1, 'y': -1, 'blg': 50, 'type': 3, 'actions': []} for i in range(1, 9)}
+        self.gems = {i: {'x': -1, 'y': -1, 'blg': 50, 'type': 3, 'actions': [], 'hidden': False} for i in range(1, MAX_SPECIAL_SLOTS + 1)}
 
         # VISIBILITY COUNTERS
         self.visible_gate_slots = 1
@@ -147,15 +164,20 @@ class SektorEditor(
 
         self.build_gui()
         self.reset_map(confirm=False, track_history=False)
-        self.mark_saved_state()
 
-        self.set_mode("TYPE")
+        if self.startup_file:
+            if not self.load_map_from_path(self.startup_file, prompt_unsaved=False, show_success=False):
+                self.mark_saved_state()
+                self.set_mode("TYPE")
+        else:
+            self.mark_saved_state()
+            self.set_mode("TYPE")
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
-        self.root.after(100, self.ask_dims)
 
 if __name__ == "__main__":
     root = tk.Tk()
     try: root.state('zoomed')
     except: pass
-    SektorEditor(root)
+    startup_file = sys.argv[1] if len(sys.argv) > 1 else None
+    SektorEditor(root, startup_file=startup_file)
     root.mainloop()

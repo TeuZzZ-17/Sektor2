@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import filedialog, messagebox, simpledialog, ttk
+from tkinter import filedialog, messagebox, ttk
 from PIL import Image, ImageTk, ImageDraw
 import os
 import copy
@@ -12,46 +12,297 @@ from sektor_paths import resource_path
 
 class DialogMixin:
 
-    def ask_integer_modal(self, title, prompt, **kwargs):
-        owner = tk.Toplevel(self.root)
-        owner.withdraw()
-        owner.transient(self.root)
-        owner.attributes("-topmost", True)
-        owner.grab_set()
-        owner.lift()
-        owner.focus_force()
-        owner.update_idletasks()
-        try:
-            return simpledialog.askinteger(title, prompt, parent=owner, **kwargs)
-        finally:
+    def center_modal_dialog(self, win, width, height):
+        self.root.update_idletasks()
+        win.update_idletasks()
+
+        root_x = self.root.winfo_rootx()
+        root_y = self.root.winfo_rooty()
+        root_w = max(1, self.root.winfo_width())
+        root_h = max(1, self.root.winfo_height())
+
+        x = root_x + max(0, (root_w - width) // 2)
+        y = root_y + max(0, (root_h - height) // 2)
+        win.geometry(f"{width}x{height}+{x}+{y}")
+
+    def ask_new_map_settings(self, title="New Map", default_set=None, default_w=DEFAULT_W, default_h=DEFAULT_H):
+        win = tk.Toplevel(self.root)
+        win.title(title)
+        win.configure(bg="#222")
+        win.resizable(False, False)
+        win.transient(self.root)
+
+        result = {"value": None}
+        default_set_num = 1
+        if default_set:
             try:
-                owner.grab_release()
+                default_set_num = max(1, min(6, int(str(default_set).replace("set", ""))))
+            except:
+                default_set_num = 1
+
+        body = tk.Frame(win, bg="#222", padx=18, pady=16)
+        body.pack(fill=tk.BOTH, expand=True)
+
+        tk.Label(body, text="Create Map", bg="#222", fg="white", font=("Arial", 12, "bold")).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 14))
+
+        tk.Label(body, text="Env / Set:", bg="#222", fg="#ddd").grid(row=1, column=0, sticky="e", padx=(0, 10), pady=4)
+        set_var = tk.StringVar(value=str(default_set_num))
+        cb_set = ttk.Combobox(body, values=[str(i) for i in range(1, 7)], textvariable=set_var, state="readonly", width=8)
+        cb_set.grid(row=1, column=1, sticky="w", pady=4)
+
+        tk.Label(body, text="W:", bg="#222", fg="#ddd").grid(row=2, column=0, sticky="e", padx=(0, 10), pady=4)
+        e_w = tk.Entry(body, width=10, bg="#111", fg="white", insertbackground="white")
+        e_w.grid(row=2, column=1, sticky="w", pady=4)
+        e_w.insert(0, str(default_w))
+
+        tk.Label(body, text="H:", bg="#222", fg="#ddd").grid(row=3, column=0, sticky="e", padx=(0, 10), pady=4)
+        e_h = tk.Entry(body, width=10, bg="#111", fg="white", insertbackground="white")
+        e_h.grid(row=3, column=1, sticky="w", pady=4)
+        e_h.insert(0, str(default_h))
+
+        buttons = tk.Frame(body, bg="#222")
+        buttons.grid(row=4, column=0, columnspan=2, sticky="e", pady=(18, 0))
+
+        def close_dialog():
+            try:
+                win.grab_release()
             except:
                 pass
-            owner.destroy()
-            self.root.lift()
+            win.destroy()
 
-    def ask_set(self):
-        n = self.ask_integer_modal(APP_NAME, "Select Set (1-6):", minvalue=1, maxvalue=6, initialvalue=1)
-        return f"set{n}" if n else None
+        def close_cancel(event=None):
+            result["value"] = None
+            close_dialog()
 
-    def ask_map_dimensions(self, default_w=DEFAULT_W, default_h=DEFAULT_H):
-        w = self.ask_integer_modal(APP_NAME, "W:", initialvalue=default_w, minvalue=3)
-        if w is None:
-            return None
-        h = self.ask_integer_modal(APP_NAME, "H:", initialvalue=default_h, minvalue=3)
-        if h is None:
-            return None
-        return w, h
+        def confirm(event=None):
+            try:
+                set_num = int(set_var.get())
+                width = int(e_w.get())
+                height = int(e_h.get())
+            except:
+                messagebox.showerror("Invalid Map", "Set, W and H must be valid numbers.", parent=win)
+                return
+
+            if not (1 <= set_num <= 6):
+                messagebox.showerror("Invalid Set", "Set must be between 1 and 6.", parent=win)
+                return
+            if width < 3 or height < 3:
+                messagebox.showerror("Invalid Size", "W and H must be at least 3.", parent=win)
+                return
+
+            set_folder = f"set{set_num}"
+            if not os.path.exists(resource_path(set_folder)):
+                messagebox.showerror("Missing Set", f"Folder not found: {set_folder}", parent=win)
+                return
+
+            result["value"] = {"set_folder": set_folder, "width": width, "height": height}
+            close_dialog()
+
+        tk.Button(buttons, text="Cancel", command=close_cancel, bg="#444", fg="white", width=10).pack(side=tk.RIGHT, padx=(8, 0))
+        tk.Button(buttons, text="OK", command=confirm, bg="#006600", fg="white", width=10).pack(side=tk.RIGHT)
+
+        win.protocol("WM_DELETE_WINDOW", close_cancel)
+        win.bind("<Escape>", close_cancel)
+        win.bind("<Return>", confirm)
+
+        self.center_modal_dialog(win, 320, 230)
+        win.grab_set()
+        e_w.select_range(0, tk.END)
+        e_w.focus_set()
+        self.root.wait_window(win)
+        return result["value"]
+
+    def ask_resize_dimensions(self, default_w, default_h):
+        win = tk.Toplevel(self.root)
+        win.title("Resize Map")
+        win.configure(bg="#222")
+        win.resizable(False, False)
+        win.transient(self.root)
+
+        result = {"value": None}
+        body = tk.Frame(win, bg="#222", padx=18, pady=16)
+        body.pack(fill=tk.BOTH, expand=True)
+
+        tk.Label(body, text="Resize Map", bg="#222", fg="white", font=("Arial", 12, "bold")).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 14))
+
+        tk.Label(body, text="W:", bg="#222", fg="#ddd").grid(row=1, column=0, sticky="e", padx=(0, 10), pady=4)
+        e_w = tk.Entry(body, width=10, bg="#111", fg="white", insertbackground="white")
+        e_w.grid(row=1, column=1, sticky="w", pady=4)
+        e_w.insert(0, str(default_w))
+
+        tk.Label(body, text="H:", bg="#222", fg="#ddd").grid(row=2, column=0, sticky="e", padx=(0, 10), pady=4)
+        e_h = tk.Entry(body, width=10, bg="#111", fg="white", insertbackground="white")
+        e_h.grid(row=2, column=1, sticky="w", pady=4)
+        e_h.insert(0, str(default_h))
+
+        buttons = tk.Frame(body, bg="#222")
+        buttons.grid(row=3, column=0, columnspan=2, sticky="e", pady=(18, 0))
+
+        def close_dialog():
+            try:
+                win.grab_release()
+            except:
+                pass
+            win.destroy()
+
+        def close_cancel(event=None):
+            result["value"] = None
+            close_dialog()
+
+        def confirm(event=None):
+            try:
+                width = int(e_w.get())
+                height = int(e_h.get())
+            except:
+                messagebox.showerror("Invalid Size", "W and H must be valid numbers.", parent=win)
+                return
+
+            if width < 3 or height < 3:
+                messagebox.showerror("Invalid Size", "W and H must be at least 3.", parent=win)
+                return
+
+            result["value"] = (width, height)
+            close_dialog()
+
+        tk.Button(buttons, text="Cancel", command=close_cancel, bg="#444", fg="white", width=10).pack(side=tk.RIGHT, padx=(8, 0))
+        tk.Button(buttons, text="OK", command=confirm, bg="#006600", fg="white", width=10).pack(side=tk.RIGHT)
+
+        win.protocol("WM_DELETE_WINDOW", close_cancel)
+        win.bind("<Escape>", close_cancel)
+        win.bind("<Return>", confirm)
+
+        self.center_modal_dialog(win, 280, 190)
+        win.grab_set()
+        e_w.select_range(0, tk.END)
+        e_w.focus_set()
+        self.root.wait_window(win)
+        return result["value"]
+
+    def count_resize_out_of_bounds(self, width, height):
+        counts = {
+            'gate_objects': 0,
+            'gate_keys': 0,
+            'item_objects': 0,
+            'item_keys': 0,
+            'gems': 0,
+            'squads': 0,
+            'hosts': 0,
+        }
+
+        def in_bounds(x, y):
+            return 0 <= x < width and 0 <= y < height
+
+        for gate in self.gates.values():
+            if gate['x'] != -1 and not in_bounds(gate['x'], gate['y']):
+                counts['gate_objects'] += 1
+                counts['gate_keys'] += len(gate['keys'])
+            else:
+                counts['gate_keys'] += sum(1 for kx, ky in gate['keys'] if not in_bounds(kx, ky))
+
+        for item in self.items.values():
+            if item['x'] != -1 and not in_bounds(item['x'], item['y']):
+                counts['item_objects'] += 1
+                counts['item_keys'] += len(item['keys'])
+            else:
+                counts['item_keys'] += sum(1 for kx, ky in item['keys'] if not in_bounds(kx, ky))
+
+        for gem in self.gems.values():
+            if gem['x'] != -1 and not in_bounds(gem['x'], gem['y']):
+                counts['gems'] += 1
+
+        counts['squads'] = sum(1 for squad in self.squads if not in_bounds(squad['x'], squad['y']))
+        counts['hosts'] = sum(1 for host in self.host_stations if not in_bounds(host['x'], host['y']))
+        return counts
+
+    def has_resize_out_of_bounds(self, counts):
+        return any(counts.values())
+
+    def confirm_resize_remove_out_of_bounds(self, counts):
+        win = tk.Toplevel(self.root)
+        win.title("Resize Map")
+        win.configure(bg="#222")
+        win.resizable(False, False)
+        win.transient(self.root)
+
+        result = {"value": False}
+        body = tk.Frame(win, bg="#222", padx=18, pady=16)
+        body.pack(fill=tk.BOTH, expand=True)
+
+        tk.Label(
+            body,
+            text="Some objects will be outside the resized map:",
+            bg="#222",
+            fg="white",
+            font=("Arial", 10, "bold")
+        ).pack(anchor=tk.W, pady=(0, 10))
+
+        text = (
+            f"Gate objects: {counts['gate_objects']}\n"
+            f"Gate keys: {counts['gate_keys']}\n"
+            f"Bomb objects: {counts['item_objects']}\n"
+            f"Bomb keys: {counts['item_keys']}\n"
+            f"Gems: {counts['gems']}\n"
+            f"Squads: {counts['squads']}\n"
+            f"Hosts: {counts['hosts']}\n\n"
+            "Continue and remove out-of-bounds objects?"
+        )
+        tk.Label(body, text=text, bg="#222", fg="#ddd", justify=tk.LEFT).pack(anchor=tk.W)
+
+        buttons = tk.Frame(body, bg="#222")
+        buttons.pack(fill=tk.X, pady=(16, 0))
+
+        def close(value=False):
+            result["value"] = value
+            try:
+                win.grab_release()
+            except:
+                pass
+            win.destroy()
+
+        tk.Button(buttons, text="Cancel", command=lambda: close(False), bg="#444", fg="white", width=12).pack(side=tk.RIGHT, padx=(8, 0))
+        tk.Button(buttons, text="Resize and remove", command=lambda: close(True), bg="#884400", fg="white", width=18).pack(side=tk.RIGHT)
+
+        win.protocol("WM_DELETE_WINDOW", lambda: close(False))
+        win.bind("<Escape>", lambda e: close(False))
+        self.center_modal_dialog(win, 360, 280)
+        win.grab_set()
+        self.root.wait_window(win)
+        return result["value"]
+
+    def remove_resize_out_of_bounds(self, width, height):
+        def in_bounds(x, y):
+            return 0 <= x < width and 0 <= y < height
+
+        for gate in self.gates.values():
+            if gate['x'] != -1 and not in_bounds(gate['x'], gate['y']):
+                gate['x'] = -1
+                gate['y'] = -1
+                gate['keys'] = []
+            else:
+                gate['keys'] = [(kx, ky) for kx, ky in gate['keys'] if in_bounds(kx, ky)]
+
+        for item in self.items.values():
+            if item['x'] != -1 and not in_bounds(item['x'], item['y']):
+                item['x'] = -1
+                item['y'] = -1
+                item['keys'] = []
+            else:
+                item['keys'] = [(kx, ky) for kx, ky in item['keys'] if in_bounds(kx, ky)]
+
+        for gem in self.gems.values():
+            if gem['x'] != -1 and not in_bounds(gem['x'], gem['y']):
+                gem['x'] = -1
+                gem['y'] = -1
+
+        self.squads = [squad for squad in self.squads if in_bounds(squad['x'], squad['y'])]
+        self.host_stations = [host for host in self.host_stations if in_bounds(host['x'], host['y'])]
+        self.current_squad_index = -1
+        self.current_host_index = -1
 
     def ask_dims(self):
-        dims = self.ask_map_dimensions(DEFAULT_W, DEFAULT_H)
-        if dims:
-            w, h = dims
-            self.mw, self.mh = w, h
-            self.reset_map(False, track_history=False)
-            self.clear_history()
-            self.mark_saved_state()
+        settings = self.ask_new_map_settings(title=APP_NAME, default_set=self.set_folder, default_w=DEFAULT_W, default_h=DEFAULT_H)
+        if settings:
+            self.create_new_map(settings['set_folder'], settings['width'], settings['height'])
         else:
             self.root.destroy()
 
@@ -68,6 +319,7 @@ class DialogMixin:
             self.update_window_title()
 
         self.current_filename = None
+        self.current_filepath = None
         self.update_window_title()
 
         self.mw, self.mh = width, height
@@ -83,6 +335,7 @@ class DialogMixin:
             'movie': "None"
         }
         self.script_content = ""
+        self.script_text_widget = None
         self.tech = {i: {'veh': [], 'blg': []} for i in range(1, 8)}
         self.custom_tech_names = {}
         self.curr_tech_faction = 1
@@ -101,54 +354,77 @@ class DialogMixin:
         self.reset_map(confirm=False, track_history=False)
         self.clear_history()
         self.mark_saved_state()
-        self.set_mode("TYPE")
+        self._suppress_script_sync = True
+        try:
+            self.set_mode("TYPE")
+        finally:
+            self._suppress_script_sync = False
         self.refresh_palette_layout(force_full=True)
         self.refresh_map_layout(force_full=True)
 
     def new_map_dialog(self):
-        set_folder = self.ask_set()
-        if not set_folder:
+        settings = self.ask_new_map_settings(title="New Map", default_set=self.set_folder, default_w=DEFAULT_W, default_h=DEFAULT_H)
+        if not settings:
             return
-        dims = self.ask_map_dimensions(DEFAULT_W, DEFAULT_H)
+        self.create_new_map(settings['set_folder'], settings['width'], settings['height'])
+
+    def resize_map_dialog(self):
+        dims = self.ask_resize_dimensions(self.mw, self.mh)
         if not dims:
             return
         w, h = dims
-        self.create_new_map(set_folder, w, h)
-
-    def resize_map_dialog(self):
-        w = self.ask_integer_modal("Resize Map", "New Width:", initialvalue=self.mw, minvalue=3)
-        h = self.ask_integer_modal("Resize Map", "New Height:", initialvalue=self.mh, minvalue=3)
         
-        if w and h:
-            if w == self.mw and h == self.mh:
-                return
-            self.push_undo_snapshot()
-            old_w, old_h = self.mw, self.mh
-            new_grids = {
-                'type': [['00'] * w for _ in range(h)],
-                'own': [[0] * w for _ in range(h)],
-                'hgt': [[DEFAULT_HGT] * w for _ in range(h)],
-                'blg': [['00'] * w for _ in range(h)]
-            }
+        if w == self.mw and h == self.mh:
+            return
+        out_counts = self.count_resize_out_of_bounds(w, h)
+        remove_out_of_bounds = self.has_resize_out_of_bounds(out_counts)
+        if remove_out_of_bounds and not self.confirm_resize_remove_out_of_bounds(out_counts):
+            return
 
-            copy_w = min(old_w, w)
-            copy_h = min(old_h, h)
+        self.push_undo_snapshot()
+        old_w, old_h = self.mw, self.mh
+        new_grids = {
+            'type': [['00'] * w for _ in range(h)],
+            'own': [[0] * w for _ in range(h)],
+            'hgt': [[DEFAULT_HGT] * w for _ in range(h)],
+            'blg': [['00'] * w for _ in range(h)]
+        }
 
-            for r in range(copy_h):
-                for c in range(copy_w):
-                    new_grids['type'][r][c] = self.grids['type'][r][c]
-                    new_grids['own'][r][c] = self.grids['own'][r][c]
-                    new_grids['hgt'][r][c] = self.grids['hgt'][r][c]
-                    new_grids['blg'][r][c] = self.grids['blg'][r][c]
+        copy_w = min(old_w, w)
+        copy_h = min(old_h, h)
 
-            self.mw, self.mh = w, h
-            self.grids = new_grids
-            self.apply_borders() 
-            self.draw_grid()
-            messagebox.showinfo("Resized", f"Map resized to {w}x{h}")
+        for r in range(copy_h):
+            for c in range(copy_w):
+                new_grids['type'][r][c] = self.grids['type'][r][c]
+                new_grids['own'][r][c] = self.grids['own'][r][c]
+                new_grids['hgt'][r][c] = self.grids['hgt'][r][c]
+                new_grids['blg'][r][c] = self.grids['blg'][r][c]
+
+        if remove_out_of_bounds:
+            self.remove_resize_out_of_bounds(w, h)
+
+        self.mw, self.mh = w, h
+        self.grids = new_grids
+        self.apply_borders()
+        self.invalidate_render_indexes()
+        self.draw_grid()
+        self.dirty = True
+        messagebox.showinfo("Resized", f"Map resized to {w}x{h}")
 
     def edit_info(self):
-        win = tk.Toplevel(self.root); win.title("Level Info"); win.geometry("500x700"); win.configure(bg="#222")
+        win = tk.Toplevel(self.root)
+        win.title("Level Info")
+        win.geometry("500x700")
+        win.configure(bg="#222")
+        win.resizable(False, False)
+        win.transient(self.root)
+
+        def close_dialog():
+            try:
+                win.grab_release()
+            except:
+                pass
+            win.destroy()
 
         # TITLE
         tk.Label(win, text="Level Title:", bg="#222", fg="white").pack(pady=5)
@@ -280,6 +556,13 @@ class DialogMixin:
                 self.lvl_info['music'] = new_music
                 self.lvl_info['movie'] = new_movie
 
-            win.destroy(); messagebox.showinfo("Success", "Level Info Updated!")
+            messagebox.showinfo("Success", "Level Info Updated!", parent=win)
+            close_dialog()
         
         tk.Button(win, text="CONFIRM", command=save, bg="#008800", fg="white", width=20).pack(pady=15)
+        win.protocol("WM_DELETE_WINDOW", close_dialog)
+        win.bind("<Escape>", lambda e: close_dialog())
+        self.center_modal_dialog(win, 500, 700)
+        win.grab_set()
+        win.focus_set()
+        self.root.wait_window(win)

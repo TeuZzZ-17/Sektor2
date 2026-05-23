@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import filedialog, messagebox, simpledialog, ttk
+from tkinter import filedialog, messagebox, ttk
 from PIL import Image, ImageTk, ImageDraw
 import os
 import copy
@@ -10,6 +10,33 @@ import subprocess
 from sektor_constants import *
 
 class UIMixin:
+
+    GEM_MODEL_LABELS = {
+        4: "04 - gem0",
+        7: "07 - gem_with_flak1",
+        9: "09 - gem_with_flak2",
+        15: "15 - gem_weapon_power",
+        16: "16 - gem_new_building",
+        50: "50 - gem_more_shield",
+        51: "51 - gem_heavy_weapon",
+        58: "58 - fuck_gem_sectors",
+        60: "60 - gem_more_roboflak",
+        61: "61 - gem_power_roboflak",
+        65: "65 - gem_more_shield",
+    }
+    GEM_MODEL_VALUES = [
+        "04 - gem0",
+        "07 - gem_with_flak1",
+        "09 - gem_with_flak2",
+        "15 - gem_weapon_power",
+        "16 - gem_new_building",
+        "50 - gem_more_shield",
+        "51 - gem_heavy_weapon",
+        "58 - fuck_gem_sectors",
+        "60 - gem_more_roboflak",
+        "61 - gem_power_roboflak",
+        "65 - gem_more_shield",
+    ]
 
     FACTION_DISPLAY_NAMES = {
         0: "Neutral",
@@ -26,6 +53,15 @@ class UIMixin:
         if owner in self.FACTION_DISPLAY_NAMES:
             return self.FACTION_DISPLAY_NAMES[owner]
         return FACTIONS.get(owner, ("Unknown", None))[0].title()
+
+    def format_gem_model_value(self, model_id):
+        return self.GEM_MODEL_LABELS.get(model_id, str(model_id))
+
+    def parse_gem_model_value(self, value):
+        match = re.match(r'^\s*(\d+)', str(value))
+        if not match:
+            return None
+        return int(match.group(1))
 
     def build_gui(self):
         # MOD: Removed PanedWindow to prevent Sash/Button glitch. Using Frames.
@@ -202,6 +238,7 @@ class UIMixin:
         self.cv_map.bind("<ButtonRelease-1>", self.on_map_left_release)
         self.cv_map.bind("<Leave>", self.clear_hover_overlay)
         self.cv_map.bind("<Button-3>", self.on_right_click); self.cv_map.bind("<B3-Motion>", self.on_right_click)
+        self.cv_map.bind("<ButtonRelease-3>", self.on_map_right_release)
         self.cv_map.bind("<ButtonPress-2>", self.start_map_pan_middle)
         self.cv_map.bind("<B2-Motion>", self.drag_map_pan)
         self.cv_map.bind("<ButtonRelease-2>", self.stop_map_pan)
@@ -220,6 +257,15 @@ class UIMixin:
         self.root.title(title)
 
     def set_mode(self, m):
+        old_mode = getattr(self, 'mode', None)
+        if (
+            old_mode == "SCRIPT" and
+            m != "SCRIPT" and
+            not getattr(self, '_restoring_snapshot', False) and
+            not getattr(self, '_suppress_script_sync', False)
+        ):
+            self.sync_script_widget_to_data(push_undo=True)
+
         self.mode = m
         self._drag_squad_idx = -1
         self._drag_host_idx = -1
@@ -234,8 +280,8 @@ class UIMixin:
             self.btn_zm_p_in.pack(side=tk.RIGHT, padx=2)
 
             self.f_custom_inputs.pack(side=tk.LEFT, padx=5)
-            if m == "TYPE": self.lbl_custom_title.config(text="Sector ID:")
-            else: self.lbl_custom_title.config(text="Building ID:")
+            if m == "TYPE": self.lbl_custom_title.config(text="Sector Hex:")
+            else: self.lbl_custom_title.config(text="Building Hex:")
             
         else:
             self.lbl_sel.pack_forget()
@@ -261,6 +307,25 @@ class UIMixin:
 
         self.upd_lbl()
         self.draw_grid()
+
+    def sync_script_widget_to_data(self, push_undo=False):
+        txt = getattr(self, 'script_text_widget', None)
+        if not txt:
+            return False
+        try:
+            if not txt.winfo_exists():
+                return False
+            new_script = txt.get("1.0", "end-1c")
+        except tk.TclError:
+            return False
+
+        if new_script == self.script_content:
+            return False
+        if push_undo:
+            self.push_undo_snapshot()
+        self.script_content = new_script
+        self.dirty = True
+        return True
 
     def upd_lbl(self):
         if self.mode == "GATE":
@@ -576,7 +641,7 @@ class UIMixin:
             fg = "black" if i == self.current_gate_slot else "white"
             tk.Button(f_slots, text=str(i), bg=bg, fg=fg, width=2, command=lambda x=i: self.select_gate_slot(x)).pack(side=tk.LEFT, padx=1)
 
-        if self.visible_gate_slots < 8:
+        if self.visible_gate_slots < MAX_SPECIAL_SLOTS:
             def add_slot():
                 self.push_undo_snapshot()
                 self.visible_gate_slots += 1; self.build_gate_ui()
@@ -586,7 +651,7 @@ class UIMixin:
             def rem_slot():
                 self.push_undo_snapshot()
                 idx = self.visible_gate_slots
-                self.gates[idx] = {'active': False, 'x': -1, 'y': -1, 'keys': [], 'target': 0, 'closed_bp': 25, 'opened_bp': 26}
+                self.gates[idx] = {'active': False, 'x': -1, 'y': -1, 'keys': [], 'target': 0, 'closed_bp': 25, 'opened_bp': 26, 'hidden': False}
                 self.visible_gate_slots -= 1
                 if self.current_gate_slot > self.visible_gate_slots: self.current_gate_slot = self.visible_gate_slots
                 self.build_gate_ui(); self.draw_grid()
@@ -672,6 +737,16 @@ class UIMixin:
             except: pass
         e_tgt.bind("<KeyRelease>", upd_g); e_cls.bind("<KeyRelease>", upd_g); e_opn.bind("<KeyRelease>", upd_g)
 
+        f_opt = tk.Frame(p, bg="#1a1a1a"); f_opt.pack(fill=tk.X, pady=(4, 2))
+        self.var_gate_hid = tk.BooleanVar(value=g_data.get('hidden', False))
+        def tog_gate_hid():
+            val = self.var_gate_hid.get()
+            if g_data.get('hidden', False) != val:
+                self.push_undo_snapshot()
+                g_data['hidden'] = val
+                self.dirty = True
+        tk.Checkbutton(f_opt, text="Unknown (Hide in Briefing)", variable=self.var_gate_hid, command=tog_gate_hid, bg="#1a1a1a", fg="white", selectcolor="#444").pack(anchor=tk.W, padx=5)
+
         def set_t(t): self.gate_tool=t
         tk.Button(p, text="[ PLACE BEAMGATE ]", command=lambda: set_t("GATE"), bg="#00FFFF", fg="black", width=24).pack(anchor=tk.CENTER, pady=5)
         tk.Button(p, text="[ PLACE KEYSECT ]", command=lambda: set_t("KEY"), bg="#FFFF00", fg="black", width=24).pack(anchor=tk.CENTER, pady=2)
@@ -694,7 +769,7 @@ class UIMixin:
             fg = "white"
             tk.Button(f_slots, text=str(i), bg=bg, fg=fg, width=2, command=lambda x=i: self.select_item_slot(x)).pack(side=tk.LEFT, padx=1)
 
-        if self.visible_item_slots < 8:
+        if self.visible_item_slots < MAX_SPECIAL_SLOTS:
             def add_slot():
                 self.push_undo_snapshot()
                 self.visible_item_slots += 1; self.build_item_ui()
@@ -705,7 +780,7 @@ class UIMixin:
                 self.push_undo_snapshot()
                 idx = self.visible_item_slots
                 self.items[idx] = {'active': False, 'x': -1, 'y': -1, 'keys': [], 'countdown': 300000,
-                          'inactive_bp': 35, 'active_bp': 36, 'trigger_bp': 37, 'type': 1}
+                          'inactive_bp': 35, 'active_bp': 36, 'trigger_bp': 37, 'type': 1, 'hidden': False}
                 self.visible_item_slots -= 1
                 if self.current_item_slot > self.visible_item_slots: self.current_item_slot = self.visible_item_slots
                 self.build_item_ui(); self.draw_grid()
@@ -714,12 +789,12 @@ class UIMixin:
         i_data = self.items[self.current_item_slot]
         
         # --- PRESET DROPDOWN (ITEM) ---
-        f_pre = tk.Frame(p, bg="#1a1a1a"); f_pre.pack(fill=tk.X, pady=(10,2))
-        tk.Label(f_pre, text="Model Preset:", bg="#1a1a1a", fg="#aaa").pack(side=tk.LEFT, padx=5)
+        f_pre = tk.Frame(p, bg="#1a1a1a"); f_pre.pack(anchor=tk.W, pady=(10,2))
+        tk.Label(f_pre, text="Model Preset:", bg="#1a1a1a", fg="#aaa", width=12, anchor="e").pack(side=tk.LEFT, padx=(0, 5))
         
         preset_values = ["Standard (35/36/37)", "Parasite (68/69/70)"]
-        cb_preset = ttk.Combobox(f_pre, values=preset_values, state="readonly", width=22)
-        cb_preset.pack(side=tk.LEFT, padx=5)
+        cb_preset = ttk.Combobox(f_pre, values=preset_values, state="readonly", width=20)
+        cb_preset.pack(side=tk.LEFT)
         
         if i_data['inactive_bp'] == 35 and i_data['active_bp'] == 36 and i_data['trigger_bp'] == 37:
              cb_preset.set("Standard (35/36/37)")
@@ -759,23 +834,23 @@ class UIMixin:
         
         f = tk.Frame(p, bg="#1a1a1a"); f.pack(fill=tk.X, pady=5)
 
-        tk.Label(f, text="Timer:", fg="white", bg="#1a1a1a").grid(row=0, column=0)
-        e_cnt = tk.Entry(f, width=6); e_cnt.grid(row=0, column=1); e_cnt.insert(0, str(i_data['countdown']))
+        tk.Label(f, text="Timer:", fg="white", bg="#1a1a1a", width=8).grid(row=0, column=0, sticky="e")
+        e_cnt = tk.Entry(f, width=6); e_cnt.grid(row=0, column=1, sticky="w"); e_cnt.insert(0, str(i_data['countdown']))
 
         lbl_mins = tk.Label(f, text="", bg="#1a1a1a", fg="#00FF00", font=("Arial", 8))
-        lbl_mins.grid(row=0, column=2, padx=2)
+        lbl_mins.grid(row=0, column=2, padx=2, sticky="w")
 
-        tk.Label(f, text="Type:", fg="white", bg="#1a1a1a").grid(row=0, column=3)
-        e_typ = tk.Entry(f, width=6); e_typ.grid(row=0, column=4); e_typ.insert(0, str(i_data['type']))
+        tk.Label(f, text="Type:", fg="white", bg="#1a1a1a", width=5).grid(row=0, column=3, sticky="e")
+        e_typ = tk.Entry(f, width=5); e_typ.grid(row=0, column=4, sticky="w"); e_typ.insert(0, str(i_data['type']))
 
-        tk.Label(f, text="Off Model:", fg="white", bg="#1a1a1a").grid(row=1, column=0)
-        e_ina = tk.Entry(f, width=6); e_ina.grid(row=1, column=1); e_ina.insert(0, str(i_data['inactive_bp']))
+        tk.Label(f, text="Off Model:", fg="white", bg="#1a1a1a", width=8).grid(row=1, column=0, sticky="e")
+        e_ina = tk.Entry(f, width=5); e_ina.grid(row=1, column=1, sticky="w"); e_ina.insert(0, str(i_data['inactive_bp']))
 
-        tk.Label(f, text="On Model:", fg="white", bg="#1a1a1a").grid(row=1, column=3)
-        e_act = tk.Entry(f, width=6); e_act.grid(row=1, column=4); e_act.insert(0, str(i_data['active_bp']))
+        tk.Label(f, text="On:", fg="white", bg="#1a1a1a", width=5).grid(row=1, column=3, sticky="e")
+        e_act = tk.Entry(f, width=5); e_act.grid(row=1, column=4, sticky="w"); e_act.insert(0, str(i_data['active_bp']))
 
-        tk.Label(f, text="Trigger:", fg="white", bg="#1a1a1a").grid(row=2, column=0)
-        e_trg = tk.Entry(f, width=6); e_trg.grid(row=2, column=1); e_trg.insert(0, str(i_data['trigger_bp']))
+        tk.Label(f, text="Trigger:", fg="white", bg="#1a1a1a", width=8).grid(row=2, column=0, sticky="e")
+        e_trg = tk.Entry(f, width=5); e_trg.grid(row=2, column=1, sticky="w"); e_trg.insert(0, str(i_data['trigger_bp']))
 
         def upd(ev=None):
             try:
@@ -812,9 +887,20 @@ class UIMixin:
         upd();
         for e in [e_cnt, e_typ, e_ina, e_act, e_trg]: e.bind("<KeyRelease>", upd)
 
+        f_opt = tk.Frame(p, bg="#1a1a1a"); f_opt.pack(fill=tk.X, pady=(4, 2))
+        self.var_item_hid = tk.BooleanVar(value=i_data.get('hidden', False))
+        def tog_item_hid():
+            val = self.var_item_hid.get()
+            if i_data.get('hidden', False) != val:
+                self.push_undo_snapshot()
+                i_data['hidden'] = val
+                self.dirty = True
+        tk.Checkbutton(f_opt, text="Unknown (Hide in Briefing)", variable=self.var_item_hid, command=tog_item_hid, bg="#1a1a1a", fg="white", selectcolor="#444").pack(anchor=tk.W, padx=5)
+
         def set_t(t): self.item_tool=t
-        tk.Button(p, text="[ PLACE BOMB ]", command=lambda: set_t("ITEM"), bg="#FF00FF", fg="black", width=24).pack(anchor=tk.CENTER, pady=5)
-        tk.Button(p, text="[ PLACE KEYSECT ]", command=lambda: set_t("KEY"), bg="#FF9900", fg="black", width=24).pack(anchor=tk.CENTER, pady=2)
+        f_place = tk.Frame(p, bg="#1a1a1a"); f_place.pack(anchor=tk.W, pady=(5, 0))
+        tk.Button(f_place, text="[ PLACE BOMB ]", command=lambda: set_t("ITEM"), bg="#FF00FF", fg="black", width=24).pack(anchor=tk.W, pady=(0, 2))
+        tk.Button(f_place, text="[ PLACE KEYSECT ]", command=lambda: set_t("KEY"), bg="#FF9900", fg="black", width=24).pack(anchor=tk.W)
         self.upd_lbl()
         self.draw_grid()
 
@@ -834,7 +920,7 @@ class UIMixin:
             fg = "black" if i == self.current_gem_slot else "white"
             tk.Button(f_slots, text=str(i), bg=bg, fg=fg, width=2, command=lambda x=i: self.select_gem_slot(x)).pack(side=tk.LEFT, padx=1)
 
-        if self.visible_gem_slots < 8:
+        if self.visible_gem_slots < MAX_SPECIAL_SLOTS:
             def add_slot():
                 self.push_undo_snapshot()
                 self.visible_gem_slots += 1; self.build_gem_ui()
@@ -844,7 +930,7 @@ class UIMixin:
             def rem_slot():
                 self.push_undo_snapshot()
                 idx = self.visible_gem_slots
-                self.gems[idx] = {'x': -1, 'y': -1, 'blg': 50, 'type': 3, 'actions': []}
+                self.gems[idx] = {'x': -1, 'y': -1, 'blg': 50, 'type': 3, 'actions': [], 'hidden': False}
                 self.visible_gem_slots -= 1
                 if self.current_gem_slot > self.visible_gem_slots: self.current_gem_slot = self.visible_gem_slots
                 self.build_gem_ui(); self.draw_grid()
@@ -852,26 +938,37 @@ class UIMixin:
 
         data = self.gems[self.current_gem_slot]
 
-        # 2. PROPERTIES (ID & TYPE)
+        # 2. PROPERTIES (MODEL & TYPE)
         f_prop = tk.Frame(p, bg="#1a1a1a"); f_prop.pack(anchor=tk.W, pady=10)
 
         tk.Label(f_prop, text="Building ID:", fg="white", bg="#1a1a1a").grid(row=0, column=0, sticky="e", padx=5, pady=2)
 
-        e_blg = tk.Entry(f_prop, width=5)
-        e_blg.grid(row=0, column=1, sticky="w", padx=5, pady=2)
-        e_blg.insert(0, str(data['blg']))
+        cb_gem_model = ttk.Combobox(f_prop, values=self.GEM_MODEL_VALUES, width=20)
+        cb_gem_model.grid(row=0, column=1, sticky="w", padx=5, pady=2)
+        cb_gem_model.set(self.format_gem_model_value(data['blg']))
 
-        def upd_b(ev):
-            try:
-                new_blg = int(e_blg.get())
-                if new_blg != data['blg']:
-                    self.push_undo_snapshot()
-                    data['blg'] = new_blg
-            except: pass
-        e_blg.bind("<KeyRelease>", upd_b)
+        def apply_gem_model_from_combo(show_warning=False):
+            new_blg = self.parse_gem_model_value(cb_gem_model.get())
+            if new_blg is None:
+                if show_warning:
+                    messagebox.showwarning("Invalid Gem Model", "Enter a numeric building model ID, for example: 65")
+                    cb_gem_model.set(self.format_gem_model_value(data['blg']))
+                return
+            if new_blg != data['blg']:
+                self.push_undo_snapshot()
+                data['blg'] = new_blg
+                self.dirty = True
+            if cb_gem_model.get().strip().isdigit() or new_blg in self.GEM_MODEL_LABELS:
+                cb_gem_model.set(self.format_gem_model_value(new_blg))
+
+        cb_gem_model.bind("<<ComboboxSelected>>", lambda e: apply_gem_model_from_combo(show_warning=True))
+        cb_gem_model.bind("<Return>", lambda e: apply_gem_model_from_combo(show_warning=True))
+        cb_gem_model.bind("<FocusOut>", lambda e: apply_gem_model_from_combo(show_warning=True))
+        cb_gem_model.bind("<KeyRelease>", lambda e: apply_gem_model_from_combo(show_warning=False))
+        tk.Label(f_prop, text="(Custom values allowed)", fg="#777", bg="#1a1a1a", font=("Arial", 7)).grid(row=1, column=1, sticky="w", padx=5, pady=(0,5))
 
         # TYPE DROPDOWN
-        tk.Label(f_prop, text="Type:", fg="white", bg="#1a1a1a").grid(row=1, column=0, sticky="e", padx=5, pady=2)
+        tk.Label(f_prop, text="Type:", fg="white", bg="#1a1a1a").grid(row=2, column=0, sticky="e", padx=5, pady=2)
         type_map = {1: "1 (Weapon/Pwr)", 2: "2 (Shield)", 3: "3 (Tech/Unlock)"}
         rev_map = {v: k for k, v in type_map.items()}
         current_display = type_map.get(data['type'], "3 (Tech/Unlock)")
@@ -884,7 +981,17 @@ class UIMixin:
              self.upd_lbl(); self.draw_grid()
         om = ttk.OptionMenu(f_prop, type_var, current_display, *type_map.values(), command=upd_t)
         om.config(width=16)
-        om.grid(row=1, column=1, sticky="w", padx=5, pady=2)
+        om.grid(row=2, column=1, sticky="w", padx=5, pady=2)
+
+        f_opt = tk.Frame(p, bg="#1a1a1a"); f_opt.pack(fill=tk.X, pady=(0, 6))
+        self.var_gem_hid = tk.BooleanVar(value=data.get('hidden', False))
+        def tog_gem_hid():
+            val = self.var_gem_hid.get()
+            if data.get('hidden', False) != val:
+                self.push_undo_snapshot()
+                data['hidden'] = val
+                self.dirty = True
+        tk.Checkbutton(f_opt, text="Unknown (Hide in Briefing)", variable=self.var_gem_hid, command=tog_gem_hid, bg="#1a1a1a", fg="white", selectcolor="#444").pack(anchor=tk.W, padx=5)
 
         # 3. ACTIONS
         tk.Label(p, text="--- ACTIONS ---", fg="#00FF00", bg="#1a1a1a", font=("bold")).pack(anchor=tk.W, pady=(15,5))
@@ -912,7 +1019,7 @@ class UIMixin:
         # UI Elements (Row 1)
         tk.Label(f_act, text="Do:", fg="white", bg="#1a1a1a").grid(row=1, column=0, sticky="w")
 
-        param_combo = ttk.Combobox(f_act, values=["enable", "add_energy", "add_shield", "num_weapons"], width=13)
+        param_combo = ttk.Combobox(f_act, values=["enable", "add_energy", "add_shield", "num_weapons"], width=11)
         param_combo.set("enable")
         param_combo.grid(row=1, column=1, sticky="ew")
 
@@ -923,23 +1030,9 @@ class UIMixin:
         # Custom Definition Note
         tk.Label(f_act, text="(Custom definition allowed)", fg="#777", bg="#1a1a1a", font=("Arial", 7)).grid(row=2, column=1, sticky="w", pady=(0,5))
 
-        # LOGIC FOR AUTO-UPDATE (Updates e_blg, NOT e_id)
+        # LOGIC FOR AUTO-UPDATE (action controls only)
         def on_modify_change(*args):
             sel = tgt_type_var.get()
-
-            # 1. Update BUILDING ID (Visual) based on Type
-            e_blg.delete(0, tk.END)
-            if sel == "modify_building":
-                e_blg.insert(0, "16")
-                data['blg'] = 16
-            elif sel == "modify_weapon":
-                e_blg.insert(0, "15")
-                data['blg'] = 15
-            else: # modify_vehicle
-                e_blg.insert(0, "50")
-                data['blg'] = 50
-
-            # 2. Update Parameter List (Do)
             if sel == "modify_vehicle":
                 param_combo['values'] = ["enable", "add_energy", "add_shield", "num_weapons"]
                 param_combo.set("enable")
@@ -949,12 +1042,14 @@ class UIMixin:
             elif sel == "modify_weapon":
                 param_combo['values'] = ["add_energy"]
                 param_combo.set("add_energy")
+            self.upd_lbl()
+            self.draw_grid()
 
         tgt_type_var.trace("w", on_modify_change)
 
         # LISTBOX & SCROLLBAR
         lb_frame = tk.Frame(p); lb_frame.pack(anchor=tk.W, padx=0, pady=5)
-        lb = tk.Listbox(lb_frame, height=5, width=30, bg="#222", fg="white", selectbackground="#008888", selectforeground="white", font=("Courier", 9))
+        lb = tk.Listbox(lb_frame, height=5, width=26, bg="#222", fg="white", selectbackground="#008888", selectforeground="white", font=("Courier", 9))
         lb.pack(side=tk.LEFT)
         sb = tk.Scrollbar(
             lb_frame,
@@ -975,7 +1070,7 @@ class UIMixin:
             lb.delete(0, tk.END)
             for a in data['actions']:
                 tgt = a['target_type'].replace("modify_", "")
-                lb.insert(tk.END, f"{tgt} {a['id']}: {a['param']}={a['val']}")
+                lb.insert(tk.END, f"{tgt} {a['id']}: {a['param']} = {a['val']}")
 
         def add_action():
             try:
@@ -1134,7 +1229,7 @@ class UIMixin:
         tk.Checkbutton(f_opt, text="Unknown (Hide in Briefing)", variable=self.var_squad_hid, command=tog_hid, bg="#1a1a1a", fg="white", selectcolor="#444").pack(anchor=tk.W, padx=5)
 
         f_list = tk.Frame(p, bg="#1a1a1a"); f_list.pack(fill=tk.BOTH, expand=True, padx=5)
-        tk.Label(f_list, text="Placed Squads (Right-Click map to remove):", bg="#1a1a1a", fg="white").pack(anchor=tk.W)
+        tk.Label(f_list, text="(Left-Click map to place, Right-Click map to remove):", bg="#1a1a1a", fg="white").pack(anchor=tk.W)
 
         self.lb_squads = tk.Listbox(f_list, bg="#222", fg="white", height=10,
                                     selectbackground="#008888", selectforeground="white")
@@ -1675,12 +1770,10 @@ class UIMixin:
         txt = tk.Text(p, bg="#111", fg="#00FF00", font=("Courier", 10), insertbackground="white", height=20)
         txt.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         txt.insert("1.0", self.script_content)
+        self.script_text_widget = txt
 
         def save_script():
-            new_script = txt.get("1.0", tk.END).strip()
-            if new_script != self.script_content:
-                self.push_undo_snapshot()
-                self.script_content = new_script
+            self.sync_script_widget_to_data(push_undo=True)
             messagebox.showinfo("Script", "Script saved successfully!")
 
         tk.Button(p, text="SAVE SCRIPT", command=save_script, bg="#005555", fg="white", font=("bold")).pack(fill=tk.X, padx=5, pady=5)

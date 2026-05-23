@@ -3,6 +3,7 @@ APP_NAME = "Sektor 2"
 
 DEFAULT_W, DEFAULT_H = 15, 15
 DEFAULT_HGT = 0x7F
+MAX_SPECIAL_SLOTS = 10
 
 # Height Constraints (+/- 30 from 0x7F)
 HGT_MIN = 0x61 # 97
@@ -53,12 +54,22 @@ FACTIONS = {
     4: ("TAERKASTEN", "#FFFF00"),
     5: ("BLACK SECT", "#555555"),
     6: ("GHORKOV", "#FF0000"),
-    7: ("DRONES", "#6C4FD8")
+    7: ("DRONES", "#2A1F3D")
+}
+
+FACTION_MAP_COLORS = {
+    5: "#555555",
+    7: "#2A1F3D",
+}
+
+FACTION_MAP_OUTLINES = {
+    5: "#D0D0D0",
+    7: "#A99BC5",
 }
 
 FACTION_TEXT_COLORS = {
     0: "#FFFFFF", 1: "#0088FF", 2: "#00FF00", 3: "#FFFFFF",
-    4: "#FFFF00", 5: "#AAAAAA", 6: "#FF4444", 7: "#000000"
+    4: "#FFFF00", 5: "#AAAAAA", 6: "#FF4444", 7: "#D0D0D0"
 }
 
 HEIGHTS = list(range(256))

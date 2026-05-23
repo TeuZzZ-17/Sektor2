@@ -1,4 +1,4 @@
 @echo off
 cd /d "%~dp0"
-python Sektor.py
+python Sektor.py %*
 pause

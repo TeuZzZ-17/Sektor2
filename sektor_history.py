@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import filedialog, messagebox, simpledialog, ttk
+from tkinter import filedialog, messagebox, ttk
 from PIL import Image, ImageTk, ImageDraw
 import os
 import copy
@@ -38,6 +38,8 @@ class HistoryMixin:
     def has_unsaved_changes(self):
         if not hasattr(self, "_saved_document_snapshot"):
             return False
+        if hasattr(self, 'sync_script_widget_to_data'):
+            self.sync_script_widget_to_data(push_undo=False)
         self.dirty = self.make_document_snapshot() != self._saved_document_snapshot
         return self.dirty
 
@@ -47,6 +49,7 @@ class HistoryMixin:
             'mh': self.mh,
             'set_folder': self.set_folder,
             'current_filename': self.current_filename,
+            'current_filepath': getattr(self, 'current_filepath', None),
             'grids': copy.deepcopy(self.grids),
             'gates': copy.deepcopy(self.gates),
             'items': copy.deepcopy(self.items),
@@ -81,6 +84,7 @@ class HistoryMixin:
         self.mh = snapshot['mh']
         self.set_folder = snapshot['set_folder']
         self.current_filename = snapshot.get('current_filename')
+        self.current_filepath = snapshot.get('current_filepath')
         self.grids = copy.deepcopy(snapshot['grids'])
         self.gates = copy.deepcopy(snapshot['gates'])
         self.items = copy.deepcopy(snapshot['items'])
@@ -91,6 +95,7 @@ class HistoryMixin:
         self.custom_tech_names = copy.deepcopy(snapshot['custom_tech_names'])
         self.lvl_info = copy.deepcopy(snapshot['lvl_info'])
         self.script_content = snapshot['script_content']
+        self.script_text_widget = None
         self.visible_gate_slots = snapshot['visible_gate_slots']
         self.visible_item_slots = snapshot['visible_item_slots']
         self.visible_gem_slots = snapshot['visible_gem_slots']
@@ -111,7 +116,11 @@ class HistoryMixin:
             self.reload_assets()
         self.update_window_title()
         mode_to_restore = snapshot.get('mode', "TYPE")
-        self.set_mode(mode_to_restore)
+        self._restoring_snapshot = True
+        try:
+            self.set_mode(mode_to_restore)
+        finally:
+            self._restoring_snapshot = False
         self.refresh_palette_layout(force_full=True)
         self.refresh_map_layout(force_full=True)
         self.draw_grid()
