@@ -1,0 +1,298 @@
+[
+  {
+    "id": 1,
+    "name": "Whizkid"
+  },
+  {
+    "id": 2,
+    "name": "Granate1"
+  },
+  {
+    "id": 3,
+    "name": "Granate2"
+  },
+  {
+    "id": 4,
+    "name": "Snoopy"
+  },
+  {
+    "id": 5,
+    "name": "Hammer"
+  },
+  {
+    "id": 6,
+    "name": "Firestorm"
+  },
+  {
+    "id": 7,
+    "name": "Strongarm"
+  },
+  {
+    "id": 8,
+    "name": "Strongarm2"
+  },
+  {
+    "id": 10,
+    "name": "Knuddeloerpse"
+  },
+  {
+    "id": 12,
+    "name": "Lanze Der Wahrheit"
+  },
+  {
+    "id": 13,
+    "name": "Flach Und Aus"
+  },
+  {
+    "id": 14,
+    "name": "Killercloud"
+  },
+  {
+    "id": 15,
+    "name": "Der Schlaue Urfin"
+  },
+  {
+    "id": 16,
+    "name": "Whizkid2"
+  },
+  {
+    "id": 17,
+    "name": "Fyugism"
+  },
+  {
+    "id": 18,
+    "name": "16tons"
+  },
+  {
+    "id": 19,
+    "name": "Gully"
+  },
+  {
+    "id": 20,
+    "name": "Userbronsteijns Neffe"
+  },
+  {
+    "id": 22,
+    "name": "Chickenwing"
+  },
+  {
+    "id": 23,
+    "name": "Jeanmichel"
+  },
+  {
+    "id": 24,
+    "name": "Achilles"
+  },
+  {
+    "id": 25,
+    "name": "Tillie Willie"
+  },
+  {
+    "id": 26,
+    "name": "Ion Tichy"
+  },
+  {
+    "id": 27,
+    "name": "Cohen"
+  },
+  {
+    "id": 28,
+    "name": "Doppelpopel"
+  },
+  {
+    "id": 31,
+    "name": "Trichinenbefall"
+  },
+  {
+    "id": 32,
+    "name": "Foggwulf"
+  },
+  {
+    "id": 33,
+    "name": "Metzel"
+  },
+  {
+    "id": 34,
+    "name": "Bronsteijns Neffe"
+  },
+  {
+    "id": 36,
+    "name": "Serpskoje"
+  },
+  {
+    "id": 37,
+    "name": "Foggwulf2"
+  },
+  {
+    "id": 38,
+    "name": "Bumm"
+  },
+  {
+    "id": 49,
+    "name": "Ziing 1"
+  },
+  {
+    "id": 63,
+    "name": "Blocker"
+  },
+  {
+    "id": 64,
+    "name": "Tiny"
+  },
+  {
+    "id": 65,
+    "name": "Napoleon"
+  },
+  {
+    "id": 66,
+    "name": "Bergsachse"
+  },
+  {
+    "id": 68,
+    "name": "Zocker"
+  },
+  {
+    "id": 69,
+    "name": "Shocker"
+  },
+  {
+    "id": 70,
+    "name": "Knocker"
+  },
+  {
+    "id": 71,
+    "name": "Rausschmiss"
+  },
+  {
+    "id": 72,
+    "name": "Answinist"
+  },
+  {
+    "id": 73,
+    "name": "Lockerbe"
+  },
+  {
+    "id": 80,
+    "name": "Mykonetzflaklaser"
+  },
+  {
+    "id": 81,
+    "name": "Taer Flak"
+  },
+  {
+    "id": 82,
+    "name": "Myko Flak"
+  },
+  {
+    "id": 83,
+    "name": "Mini Kyt Flak"
+  },
+  {
+    "id": 84,
+    "name": "Big Kyt Flak"
+  },
+  {
+    "id": 90,
+    "name": "Vornraus"
+  },
+  {
+    "id": 91,
+    "name": "Hintenraus"
+  },
+  {
+    "id": 92,
+    "name": "Obenraus"
+  },
+  {
+    "id": 93,
+    "name": "Untenraus"
+  },
+  {
+    "id": 94,
+    "name": "Bsect Missies"
+  },
+  {
+    "id": 95,
+    "name": "Bsect Blue Eye"
+  },
+  {
+    "id": 96,
+    "name": "Smallaa"
+  },
+  {
+    "id": 97,
+    "name": "Stimmgong"
+  },
+  {
+    "id": 100,
+    "name": "Usr Flak0"
+  },
+  {
+    "id": 101,
+    "name": "Usr Flak1"
+  },
+  {
+    "id": 102,
+    "name": "Usr Flak2"
+  },
+  {
+    "id": 103,
+    "name": "Usr Flak3"
+  },
+  {
+    "id": 104,
+    "name": "Usr Flak4"
+  },
+  {
+    "id": 105,
+    "name": "Usr Flak5"
+  },
+  {
+    "id": 106,
+    "name": "Bodenflak"
+  },
+  {
+    "id": 107,
+    "name": "Gtflakw"
+  },
+  {
+    "id": 108,
+    "name": "Tflak"
+  },
+  {
+    "id": 111,
+    "name": "Kyt Flak0"
+  },
+  {
+    "id": 112,
+    "name": "Sulg Einschuss"
+  },
+  {
+    "id": 115,
+    "name": "Alternate"
+  },
+  {
+    "id": 116,
+    "name": "Grasflak"
+  },
+  {
+    "id": 117,
+    "name": "Mykonierflakblitz"
+  },
+  {
+    "id": 120,
+    "name": "Untenraus"
+  },
+  {
+    "id": 121,
+    "name": "Big Kyt Flak"
+  },
+  {
+    "id": 122,
+    "name": "Mykonetzflaklaser"
+  },
+  {
+    "id": 123,
+    "name": "Taer Flak"
+  }
+]

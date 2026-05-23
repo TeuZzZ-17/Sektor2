@@ -113,6 +113,7 @@ class SektorEditor(
         self._drag_squad_idx = -1
 
         # HOST STATIONS SYSTEM 
+        self.player_owner = 1
         self.host_stations = []
         self.current_host_data = {
             'owner': 1,
@@ -158,7 +159,7 @@ class SektorEditor(
         self.lists = {'type':[], 'blg':['00'], 'sky':[], 'gem_graphics': []}
         self.sel = {'type':'00', 'own':1, 'hgt':DEFAULT_HGT, 'blg':'00'}
         self.cache = {}
-        self.defs = {'veh':{}, 'blg':{}, 'host':{}}
+        self.defs = {'veh':{}, 'blg':{}, 'host':{}, 'weapon':{}}
         self.building_overlays = {}
         self.sky_previews = {}
 

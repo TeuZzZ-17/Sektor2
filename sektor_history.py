@@ -22,6 +22,7 @@ class HistoryMixin:
             'gems': copy.deepcopy(self.gems),
             'squads': copy.deepcopy(self.squads),
             'host_stations': copy.deepcopy(self.host_stations),
+            'player_owner': self.player_owner,
             'tech': copy.deepcopy(self.tech),
             'custom_tech_names': copy.deepcopy(self.custom_tech_names),
             'lvl_info': copy.deepcopy(self.lvl_info),
@@ -56,6 +57,7 @@ class HistoryMixin:
             'gems': copy.deepcopy(self.gems),
             'squads': copy.deepcopy(self.squads),
             'host_stations': copy.deepcopy(self.host_stations),
+            'player_owner': self.player_owner,
             'tech': copy.deepcopy(self.tech),
             'custom_tech_names': copy.deepcopy(self.custom_tech_names),
             'lvl_info': copy.deepcopy(self.lvl_info),
@@ -91,6 +93,7 @@ class HistoryMixin:
         self.gems = copy.deepcopy(snapshot['gems'])
         self.squads = copy.deepcopy(snapshot['squads'])
         self.host_stations = copy.deepcopy(snapshot['host_stations'])
+        self.player_owner = snapshot.get('player_owner', 1)
         self.tech = copy.deepcopy(snapshot['tech'])
         self.custom_tech_names = copy.deepcopy(snapshot['custom_tech_names'])
         self.lvl_info = copy.deepcopy(snapshot['lvl_info'])

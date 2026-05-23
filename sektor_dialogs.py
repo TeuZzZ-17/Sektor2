@@ -406,6 +406,7 @@ class DialogMixin:
         self.mw, self.mh = w, h
         self.grids = new_grids
         self.apply_borders()
+        self.normalize_border_heights()
         self.invalidate_render_indexes()
         self.draw_grid()
         self.dirty = True

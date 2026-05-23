@@ -224,7 +224,7 @@ class AssetMixin:
         return loaded
 
     def load_definitions(self):
-        for kind, base_name in [('veh', 'vehicles'), ('blg', 'buildings'), ('host', 'hoststations')]:
+        for kind, base_name in [('veh', 'vehicles'), ('blg', 'buildings'), ('host', 'hoststations'), ('weapon', 'weapons')]:
             path = resource_path(os.path.join("definitions", f"{base_name}.json"))
             if os.path.exists(path):
                 self.defs[kind] = self.load_definition_json(path)

@@ -71,6 +71,98 @@ class CanvasMixin:
 
         return True, None
 
+    GATE_AUTO_VISUALS = {
+        (5, 6): ("ca", "05"),
+        (25, 26): ("03", "19"),
+    }
+    ITEM_AUTO_VISUALS = {
+        (35, 36, 37): ("f5", "23"),
+        (68, 69, 70): ("eb", "44"),
+    }
+
+    def get_special_cell(self, data):
+        if not data or data.get('x', -1) == -1 or data.get('y', -1) == -1:
+            return None
+        return (data['x'], data['y'])
+
+    def get_special_auto_visual(self, mode, data):
+        if mode == "GATE":
+            key = (data.get('closed_bp'), data.get('opened_bp'))
+            return self.GATE_AUTO_VISUALS.get(key)
+        if mode == "ITEM":
+            key = (data.get('inactive_bp'), data.get('active_bp'), data.get('trigger_bp'))
+            return self.ITEM_AUTO_VISUALS.get(key)
+        return None
+
+    def cell_matches_auto_visual(self, cell, visual):
+        if not cell or not visual:
+            return False
+        x, y = cell
+        if not (0 <= x < self.mw and 0 <= y < self.mh):
+            return False
+        typ, blg = visual
+        return (
+            str(self.grids['type'][y][x]).lower() == typ.lower() and
+            str(self.grids['blg'][y][x]).lower() == blg.lower()
+        )
+
+    def cell_is_empty_visual(self, cell):
+        if not cell:
+            return False
+        x, y = cell
+        if not (0 <= x < self.mw and 0 <= y < self.mh):
+            return False
+        return (
+            str(self.grids['type'][y][x]).lower() == "00" and
+            str(self.grids['blg'][y][x]).lower() == "00"
+        )
+
+    def clear_auto_visual_if_matches(self, cell, visual):
+        if not self.cell_matches_auto_visual(cell, visual):
+            return False
+        x, y = cell
+        self.grids['type'][y][x] = "00"
+        self.grids['blg'][y][x] = "00"
+        return True
+
+    def set_auto_visual_if_safe(self, cell, new_visual, old_visual=None):
+        if not cell or not new_visual:
+            return False
+        if self.cell_matches_auto_visual(cell, new_visual):
+            return False
+        if not self.cell_is_empty_visual(cell) and not self.cell_matches_auto_visual(cell, old_visual):
+            return False
+        x, y = cell
+        typ, blg = new_visual
+        self.grids['type'][y][x] = typ
+        self.grids['blg'][y][x] = blg
+        return True
+
+    def sync_special_auto_visual(self, mode, data, old_cell=None, old_visual=None):
+        new_cell = self.get_special_cell(data)
+        new_visual = self.get_special_auto_visual(mode, data)
+        changed = False
+
+        if old_cell and old_cell != new_cell:
+            changed = self.clear_auto_visual_if_matches(old_cell, old_visual) or changed
+        elif old_cell and old_cell == new_cell and old_visual and not new_visual:
+            changed = self.clear_auto_visual_if_matches(old_cell, old_visual) or changed
+
+        if new_cell:
+            changed = self.set_auto_visual_if_safe(new_cell, new_visual, old_visual) or changed
+
+        if changed:
+            self.dirty = True
+        return changed
+
+    def clear_special_auto_visual(self, mode, data):
+        cell = self.get_special_cell(data)
+        visual = self.get_special_auto_visual(mode, data)
+        changed = self.clear_auto_visual_if_matches(cell, visual)
+        if changed:
+            self.dirty = True
+        return changed
+
     def has_squad(self, cx, cy, exclude_index=None):
         for i, s in enumerate(self.squads):
             if exclude_index is not None and i == exclude_index: continue
@@ -1048,7 +1140,11 @@ class CanvasMixin:
                                  (self.mode not in ["GATE", "ITEM"] or (cx, cy) not in current_data['keys'])
                              ):
                                  ox, oy = current_data['x'], current_data['y']
+                                 old_cell = (ox, oy)
+                                 old_visual = self.get_special_auto_visual(self.mode, current_data)
                                  current_data['x'], current_data['y'] = cx, cy
+                                 if self.mode in ["GATE", "ITEM"]:
+                                     self.sync_special_auto_visual(self.mode, current_data, old_cell=old_cell, old_visual=old_visual)
                                  self.invalidate_render_indexes()
                                  self.redraw_cells((ox, oy), (cx, cy))
                 return
@@ -1085,7 +1181,11 @@ class CanvasMixin:
                             messagebox.showwarning("Error", "Cannot place Object on its own Key!"); return
 
                     old_x, old_y = current_data['x'], current_data['y']
+                    old_cell = (old_x, old_y) if old_x != -1 and old_y != -1 else None
+                    old_visual = self.get_special_auto_visual(target_mode, current_data)
                     current_data['x'] = cx; current_data['y'] = cy
+                    if target_mode in ["GATE", "ITEM"]:
+                        self.sync_special_auto_visual(target_mode, current_data, old_cell=old_cell, old_visual=old_visual)
                     self.invalidate_render_indexes()
                     self.redraw_cells((old_x, old_y), (cx, cy))
             return
@@ -1216,7 +1316,11 @@ class CanvasMixin:
 
         if self.mode=="TYPE": self.grids['type'][cy][cx]=self.sel['type']
         elif self.mode=="OWN": self.grids['own'][cy][cx]=self.sel['own']
-        elif self.mode=="HGT": self.grids['hgt'][cy][cx] = max(HGT_MIN, min(HGT_MAX, self.sel['hgt']))
+        elif self.mode=="HGT":
+            self.grids['hgt'][cy][cx] = max(HGT_MIN, min(HGT_MAX, self.sel['hgt']))
+            changed_border_cells = self.normalize_border_heights()
+            self.redraw_cells((cx, cy), *changed_border_cells)
+            return
         elif self.mode=="BLG": self.grids['blg'][cy][cx]=self.sel['blg']
         self.redraw_cells((cx, cy))
 
@@ -1288,13 +1392,15 @@ class CanvasMixin:
             if self.grids['hgt'][cy][cx] != DEFAULT_HGT:
                 push_right_undo_once()
                 self.grids['hgt'][cy][cx] = DEFAULT_HGT
-                self.redraw_cells((cx, cy))
+                changed_border_cells = self.normalize_border_heights()
+                self.redraw_cells((cx, cy), *changed_border_cells)
             return
 
         if self.mode == "GATE":
             for i, g in self.gates.items():
                 if g['x'] == cx and g['y'] == cy:
                     push_right_undo_once()
+                    self.clear_special_auto_visual("GATE", g)
                     g['x'] = -1; g['y'] = -1
                     self.invalidate_render_indexes()
                     self.redraw_cells((cx, cy)); return
@@ -1307,6 +1413,7 @@ class CanvasMixin:
             for i, it in self.items.items():
                 if it['x'] == cx and it['y'] == cy:
                     push_right_undo_once()
+                    self.clear_special_auto_visual("ITEM", it)
                     it['x'] = -1; it['y'] = -1
                     self.invalidate_render_indexes()
                     self.redraw_cells((cx, cy)); return
