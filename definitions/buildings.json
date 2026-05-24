@@ -1,79 +1,91 @@
 [
   {
     "id": 1,
-    "name": "Power_Station_II"
+    "name": "Power Station 1+"
   },
   {
     "id": 2,
-    "name": "Flak_Station_II"
+    "name": "Flak Station 2"
+  },
+  {
+    "id": 3,
+    "name": "Radar Station 1"
   },
   {
     "id": 10,
-    "name": "Myko_Power_I"
+    "name": "Myko Power Station 1"
   },
   {
     "id": 11,
-    "name": "Power_Flak_I"
+    "name": "Power Station 2"
   },
   {
     "id": 12,
-    "name": "Kyt_Power_II"
+    "name": "Kyt Power Station 2"
   },
   {
     "id": 13,
-    "name": "Myko_Flak_I"
+    "name": "Myko Flak Station"
   },
   {
     "id": 14,
-    "name": "Power_Station_III"
+    "name": "Power Station 3"
   },
   {
     "id": 17,
-    "name": "Taer_Power_II"
+    "name": "Taer Power Station 2"
+  },
+  {
+    "id": 18,
+    "name": "Black Sect Flak Station"
+  },
+  {
+    "id": 19,
+    "name": "Kyt Anti-Ground Flak"
   },
   {
     "id": 28,
-    "name": "Flak_Station_I"
+    "name": "Flak Station 1"
   },
   {
     "id": 30,
-    "name": "Kyt_Flak"
+    "name": "Kyt Flak Station"
   },
   {
     "id": 31,
-    "name": "Taer_Flak"
+    "name": "Taer Flak Station"
   },
   {
     "id": 52,
-    "name": "Kyt_Power_I"
+    "name": "Kyt Power Station"
   },
   {
     "id": 53,
-    "name": "Taer_Power_I"
+    "name": "Taer Power Station"
   },
   {
     "id": 54,
-    "name": "Radar_Station"
+    "name": "Radar Station 2"
   },
   {
     "id": 63,
-    "name": "Power_Station_I"
+    "name": "Power Station 1"
   },
   {
     "id": 64,
-    "name": "Power_Flak_I"
+    "name": "Power Station 2+"
   },
   {
     "id": 71,
-    "name": "Kyt_Radar"
+    "name": "Kyt Radar Station"
   },
   {
     "id": 72,
-    "name": "Myko_Radar"
+    "name": "Myko Radar Station"
   },
   {
     "id": 73,
-    "name": "Taer_Radar"
+    "name": "Taer Radar Station"
   },
   {
     "id": 62,

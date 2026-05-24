@@ -1,13 +1,6 @@
 import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
-from PIL import Image, ImageTk, ImageDraw
-import os
 import copy
-import re
-import platform
-import subprocess
 
-from sektor_constants import *
 
 class HistoryMixin:
 

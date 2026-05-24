@@ -10,6 +10,137 @@ from sektor_paths import resource_path, writable_path
 
 class AssetMixin:
 
+    def get_fallback_host_ai_presets(self):
+        return {
+            name: dict(values)
+            for name, values in FALLBACK_HOST_AI_PRESETS.items()
+        }
+
+    def get_fallback_host_ai_descriptions(self):
+        return {
+            DEFAULT_HOST_AI_PRESET: "Balanced conquest, defense, recon and attacks.",
+            "Tech Hunter": "Prioritizes tech sectors, gems and key objectives.",
+            "Adaptive": "Flexible all-round behavior for dynamic maps.",
+            "Swarm Mind": "Constant pressure with many cheap attack groups.",
+            "Siege Master": "Slow buildup followed by heavy offensive pushes.",
+            "Deep Strike": "Focuses on host stations and rear targets.",
+            "Air Supremacy": "Radar-heavy air control and fast scouting.",
+            "Iron Wall": "Extreme defense with strong flak and territory hold.",
+            "Opportunist": "Waits for weak spots before attacking.",
+            "Radar Freak": "Obsessive radar coverage and map awareness.",
+            "Flak Maniac": "Builds heavy flak defenses almost everywhere.",
+            "Paranoid": "Defensive, radar-heavy and hard to surprise.",
+            "Doom March": "Slow, relentless pressure across the map.",
+            "Custom": "Custom AI values.",
+        }
+
+    def clean_host_ai_values(self, values=None):
+        values = values if isinstance(values, dict) else {}
+        fallback = self.get_fallback_host_ai_presets()[DEFAULT_HOST_AI_PRESET]
+        clean = {}
+        for field in HOST_AI_FIELDS:
+            try:
+                raw_value = int(values.get(field, fallback[field]))
+            except:
+                raw_value = fallback[field]
+            if field in HOST_AI_BUDGET_FIELDS:
+                raw_value = max(0, min(100, raw_value))
+            else:
+                raw_value = max(0, raw_value)
+            clean[field] = raw_value
+        return clean
+
+    def load_host_ai_presets(self):
+        path = resource_path(os.path.join("definitions", "host_ai_presets.json"))
+        presets = {}
+        descriptions = self.get_fallback_host_ai_descriptions()
+        if os.path.exists(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                if isinstance(data, dict):
+                    for name, values in data.items():
+                        if not isinstance(values, dict):
+                            continue
+                        preset_name = str(name).strip()
+                        if preset_name:
+                            description = str(values.get("description", "")).strip()
+                            if description:
+                                descriptions[preset_name] = description
+                            raw_values = values.get("values") if isinstance(values.get("values"), dict) else values
+                            presets[preset_name] = self.clean_host_ai_values(raw_values)
+            except Exception as e:
+                try:
+                    messagebox.showwarning("Host AI Presets", f"Invalid host_ai_presets.json:\n{e}")
+                except:
+                    pass
+
+        if not presets:
+            presets = self.get_fallback_host_ai_presets()
+            descriptions.update(self.get_fallback_host_ai_descriptions())
+        elif DEFAULT_HOST_AI_PRESET not in presets:
+            presets[DEFAULT_HOST_AI_PRESET] = self.get_fallback_host_ai_presets()[DEFAULT_HOST_AI_PRESET]
+
+        self.host_ai_presets = presets
+        self.host_ai_preset_descriptions = descriptions
+        ordered_names = list(presets.keys())
+        if DEFAULT_HOST_AI_PRESET in ordered_names:
+            ordered_names.remove(DEFAULT_HOST_AI_PRESET)
+            ordered_names.insert(0, DEFAULT_HOST_AI_PRESET)
+        self.host_ai_preset_names = ordered_names
+
+    def get_host_ai_preset_description(self, preset_name):
+        descriptions = getattr(self, "host_ai_preset_descriptions", None) or self.get_fallback_host_ai_descriptions()
+        return descriptions.get(preset_name) or ("Custom AI values." if preset_name == "Custom" else "")
+
+    def make_host_ai(self, preset_name=DEFAULT_HOST_AI_PRESET):
+        presets = getattr(self, "host_ai_presets", None) or self.get_fallback_host_ai_presets()
+        if preset_name not in presets:
+            preset_name = DEFAULT_HOST_AI_PRESET if DEFAULT_HOST_AI_PRESET in presets else next(iter(presets))
+        ai = dict(presets[preset_name])
+        ai["preset"] = preset_name
+        return ai
+
+    def detect_host_ai_preset(self, values):
+        clean_values = self.clean_host_ai_values(values)
+        presets = getattr(self, "host_ai_presets", None) or self.get_fallback_host_ai_presets()
+        for name in getattr(self, "host_ai_preset_names", list(presets.keys())):
+            preset_values = presets.get(name)
+            if preset_values and all(clean_values[field] == preset_values[field] for field in HOST_AI_FIELDS):
+                return name
+        return "Custom"
+
+    def normalize_host_ai(self, ai=None):
+        if not isinstance(ai, dict):
+            return self.make_host_ai(DEFAULT_HOST_AI_PRESET)
+
+        preset_name = str(ai.get("preset", DEFAULT_HOST_AI_PRESET))
+        has_explicit_values = any(field in ai for field in HOST_AI_FIELDS)
+        if not has_explicit_values and preset_name != "Custom":
+            return self.make_host_ai(preset_name)
+
+        values = self.clean_host_ai_values(ai)
+        values["preset"] = "Custom" if preset_name == "Custom" else self.detect_host_ai_preset(values)
+        return values
+
+    def ensure_host_ai(self, host):
+        if not isinstance(host, dict):
+            return self.make_host_ai(DEFAULT_HOST_AI_PRESET)
+        host["ai"] = self.normalize_host_ai(host.get("ai"))
+        return host["ai"]
+
+    def ensure_host_defaults(self, host):
+        if not isinstance(host, dict):
+            return
+        host.setdefault("reload_const", DEFAULT_HOST_RELOAD_CONST)
+        host.setdefault("viewangle", DEFAULT_HOST_VIEWANGLE)
+        self.ensure_host_ai(host)
+
+    def ensure_squad_defaults(self, squad):
+        if not isinstance(squad, dict):
+            return
+        squad.setdefault("useable", False)
+
     def ensure_asset_dir(self, relative_dir):
         path = resource_path(relative_dir)
         if os.path.isdir(path):
@@ -239,6 +370,7 @@ class AssetMixin:
                     messagebox.showwarning("Definitions", f"Missing required definition file:\n{path}")
                 except:
                     pass
+        self.load_host_ai_presets()
 
     def get_img(self, cat, name, sz, extra=None):
         key = (cat, name, sz, extra)

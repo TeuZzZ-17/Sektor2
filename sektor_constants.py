@@ -4,6 +4,9 @@ APP_NAME = "Sektor 2"
 DEFAULT_W, DEFAULT_H = 15, 15
 DEFAULT_HGT = 0x7F
 DEFAULT_HOST_POS_Y = -300
+DEFAULT_HOST_RELOAD_CONST = 500000
+DEFAULT_HOST_VIEWANGLE = 12
+DEFAULT_SCRIPT_CONTENT = "include data:scripts/startup2.scr"
 MAX_SPECIAL_SLOTS = 10
 
 # Height Constraints (+/- 30 from 0x7F)
@@ -19,6 +22,11 @@ CUSTOM_BORDER_COLOR = "#FF0000" # Bright Red for Custom
 TEXT_COLOR = "#00FFFF"
 SCROLL_BG = "#00AAAA"
 SCROLL_ACTIVE = TEXT_COLOR
+SELECTION_COLOR = "#FFFFFF"
+SELECTION_SHADOW_COLOR = "#001018"
+SELECTION_OUTLINE_WIDTH = 4
+LISTBOX_SELECTION_BG = "#00A8C8"
+LISTBOX_SELECTION_FG = "#000000"
 
 HEIGHT_HIGH_COLOR = "#00E5FF"
 HEIGHT_BASE_COLOR = "#F2F2F2"
@@ -76,3 +84,43 @@ FACTION_TEXT_COLORS = {
 HEIGHTS = list(range(256))
 
 PALETTE_ONLY_BUILDING_OVERLAYS = {"beamgate", "gem", "superitem"}
+
+HOST_AI_BUDGET_FIELDS = (
+    "con_budget", "def_budget", "rec_budget", "rob_budget",
+    "pow_budget", "rad_budget", "saf_budget", "cpl_budget",
+)
+HOST_AI_DELAY_FIELDS = (
+    "con_delay", "def_delay", "rec_delay", "rob_delay",
+    "pow_delay", "rad_delay", "saf_delay", "cpl_delay",
+)
+HOST_AI_FIELDS = (
+    "con_budget", "con_delay",
+    "def_budget", "def_delay",
+    "rec_budget", "rec_delay",
+    "rob_budget", "rob_delay",
+    "pow_budget", "pow_delay",
+    "rad_budget", "rad_delay",
+    "saf_budget", "saf_delay",
+    "cpl_budget", "cpl_delay",
+)
+DEFAULT_HOST_AI_PRESET = "Balanced"
+FALLBACK_HOST_AI_PRESETS = {
+    "Balanced": {
+        "con_budget": 70,
+        "con_delay": 0,
+        "def_budget": 70,
+        "def_delay": 0,
+        "rec_budget": 70,
+        "rec_delay": 0,
+        "rob_budget": 70,
+        "rob_delay": 0,
+        "pow_budget": 40,
+        "pow_delay": 0,
+        "rad_budget": 10,
+        "rad_delay": 0,
+        "saf_budget": 40,
+        "saf_delay": 0,
+        "cpl_budget": 20,
+        "cpl_delay": 0,
+    }
+}

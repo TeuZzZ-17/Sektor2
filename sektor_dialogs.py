@@ -1,11 +1,7 @@
 import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
-from PIL import Image, ImageTk, ImageDraw
+from tkinter import messagebox, ttk
+from PIL import Image, ImageTk
 import os
-import copy
-import re
-import platform
-import subprocess
 
 from sektor_constants import *
 from sektor_paths import resource_path
@@ -42,26 +38,28 @@ class DialogMixin:
 
         body = tk.Frame(win, bg="#222", padx=18, pady=16)
         body.pack(fill=tk.BOTH, expand=True)
+        content = tk.Frame(body, bg="#222")
+        content.pack(expand=True)
 
-        tk.Label(body, text="Create Map", bg="#222", fg="white", font=("Arial", 12, "bold")).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 14))
+        tk.Label(content, text="Create Map", bg="#222", fg="white", font=("Arial", 12, "bold")).grid(row=0, column=0, columnspan=2, pady=(0, 14))
 
-        tk.Label(body, text="Env / Set:", bg="#222", fg="#ddd").grid(row=1, column=0, sticky="e", padx=(0, 10), pady=4)
+        tk.Label(content, text="Env / Set:", bg="#222", fg="#ddd").grid(row=1, column=0, sticky="e", padx=(0, 10), pady=4)
         set_var = tk.StringVar(value=str(default_set_num))
-        cb_set = ttk.Combobox(body, values=[str(i) for i in range(1, 7)], textvariable=set_var, state="readonly", width=8)
+        cb_set = ttk.Combobox(content, values=[str(i) for i in range(1, 7)], textvariable=set_var, state="readonly", width=8)
         cb_set.grid(row=1, column=1, sticky="w", pady=4)
 
-        tk.Label(body, text="W:", bg="#222", fg="#ddd").grid(row=2, column=0, sticky="e", padx=(0, 10), pady=4)
-        e_w = tk.Entry(body, width=10, bg="#111", fg="white", insertbackground="white")
+        tk.Label(content, text="W:", bg="#222", fg="#ddd").grid(row=2, column=0, sticky="e", padx=(0, 10), pady=4)
+        e_w = tk.Entry(content, width=10, bg="#111", fg="white", insertbackground="white")
         e_w.grid(row=2, column=1, sticky="w", pady=4)
         e_w.insert(0, str(default_w))
 
-        tk.Label(body, text="H:", bg="#222", fg="#ddd").grid(row=3, column=0, sticky="e", padx=(0, 10), pady=4)
-        e_h = tk.Entry(body, width=10, bg="#111", fg="white", insertbackground="white")
+        tk.Label(content, text="H:", bg="#222", fg="#ddd").grid(row=3, column=0, sticky="e", padx=(0, 10), pady=4)
+        e_h = tk.Entry(content, width=10, bg="#111", fg="white", insertbackground="white")
         e_h.grid(row=3, column=1, sticky="w", pady=4)
         e_h.insert(0, str(default_h))
 
-        buttons = tk.Frame(body, bg="#222")
-        buttons.grid(row=4, column=0, columnspan=2, sticky="e", pady=(18, 0))
+        buttons = tk.Frame(content, bg="#222")
+        buttons.grid(row=4, column=0, columnspan=2, pady=(18, 0))
 
         def close_dialog():
             try:
@@ -334,7 +332,7 @@ class DialogMixin:
             'music': "None",
             'movie': "None"
         }
-        self.script_content = ""
+        self.script_content = DEFAULT_SCRIPT_CONTENT
         self.script_text_widget = None
         self.tech = {i: {'veh': [], 'blg': []} for i in range(1, 8)}
         self.custom_tech_names = {}
@@ -348,8 +346,18 @@ class DialogMixin:
         self._drag_squad_idx = -1
         self._drag_host_idx = -1
 
-        self.current_squad_data = {'owner': 1, 'veh': 1, 'num': 1, 'hidden': False, 'custom_name': None}
-        self.current_host_data = {'owner': 1, 'veh': 56, 'energy': 500000, 'pos_y': DEFAULT_HOST_POS_Y, 'custom_name': None, 'hidden': False}
+        self.current_squad_data = {'owner': 1, 'veh': 1, 'num': 1, 'hidden': False, 'useable': False, 'custom_name': None}
+        self.current_host_data = {
+            'owner': 1,
+            'veh': 56,
+            'energy': 500000,
+            'pos_y': DEFAULT_HOST_POS_Y,
+            'reload_const': DEFAULT_HOST_RELOAD_CONST,
+            'viewangle': DEFAULT_HOST_VIEWANGLE,
+            'custom_name': None,
+            'hidden': False,
+            'ai': self.make_host_ai()
+        }
 
         self.reset_map(confirm=False, track_history=False)
         self.clear_history()
@@ -415,7 +423,7 @@ class DialogMixin:
     def edit_info(self):
         win = tk.Toplevel(self.root)
         win.title("Level Info")
-        win.geometry("500x700")
+        win.geometry("560x780")
         win.configure(bg="#222")
         win.resizable(False, False)
         win.transient(self.root)
@@ -431,23 +439,108 @@ class DialogMixin:
         tk.Label(win, text="Level Title:", bg="#222", fg="white").pack(pady=5)
         e_title = tk.Entry(win, width=40); e_title.pack(); e_title.insert(0, self.lvl_info['title'])
 
-        # MAP FILES
-        f_maps = tk.Frame(win, bg="#222"); f_maps.pack(pady=10)
-        tk.Label(f_maps, text="Briefing Map (MB):", bg="#222", fg="#AAA").grid(row=0, column=0, padx=5)
-        e_mb = tk.Entry(f_maps, width=20); e_mb.grid(row=0, column=1); e_mb.insert(0, self.lvl_info.get('mbmap', 'MB_53.IFF'))
-        tk.Label(f_maps, text="Debriefing Map (DB):", bg="#222", fg="#AAA").grid(row=1, column=0, padx=5)
-        e_db = tk.Entry(f_maps, width=20); e_db.grid(row=1, column=1); e_db.insert(0, self.lvl_info.get('dbmap', 'DB_53.IFF'))
+        # BRIEFING / DEBRIEFING ART
+        def get_art_options(prefix):
+            mbpix_dir = resource_path("mbpix")
+            options = {}
+            if not os.path.isdir(mbpix_dir):
+                return [], options
+            for filename in os.listdir(mbpix_dir):
+                base, ext = os.path.splitext(filename)
+                if ext.lower() != ".png" or not base.lower().startswith(f"{prefix.lower()}_"):
+                    continue
+                options[base.lower()] = (base, os.path.join(mbpix_dir, filename))
+            values = [value[0] for key, value in sorted(options.items())]
+            return values, options
+
+        mb_values, mb_preview_paths = get_art_options("MB")
+        db_values, db_preview_paths = get_art_options("DB")
+        if not hasattr(self, "mbpix_previews"):
+            self.mbpix_previews = {}
+
+        f_maps = tk.Frame(win, bg="#222"); f_maps.pack(pady=(4, 1))
+        tk.Label(f_maps, text="Briefing Art (MB):", bg="#222", fg="#AAA").grid(row=0, column=0, padx=5, pady=1, sticky="e")
+        cb_mb = ttk.Combobox(f_maps, values=mb_values, width=20)
+        cb_mb.grid(row=0, column=1, padx=5, pady=1, sticky="w")
+        cb_mb.set(self.get_briefing_art_base_name(self.lvl_info.get('mbmap', 'MB_53.IFF')) or "MB_53")
+
+        tk.Label(f_maps, text="Debriefing Art (DB):", bg="#222", fg="#AAA").grid(row=1, column=0, padx=5, pady=1, sticky="e")
+        cb_db = ttk.Combobox(f_maps, values=db_values, width=20)
+        cb_db.grid(row=1, column=1, padx=5, pady=1, sticky="w")
+        cb_db.set(self.get_briefing_art_base_name(self.lvl_info.get('dbmap', 'DB_53.IFF')) or "DB_53")
+
+        tk.Label(
+            f_maps,
+            text="Original UA artwork, manually assigned. Not generated from current map.",
+            bg="#222",
+            fg="#777",
+            font=("Arial", 8)
+        ).grid(row=2, column=0, columnspan=2, pady=(1, 0))
+
+        f_art_preview = tk.Frame(win, bg="#222"); f_art_preview.pack(padx=8, pady=(0, 1))
+        mbdb_preview_w, mbdb_preview_h = 188, 172
+        mbdb_thumb_w, mbdb_thumb_h = 150, 150
+        cv_mb = tk.Canvas(f_art_preview, width=mbdb_preview_w, height=mbdb_preview_h, bg="#111", highlightthickness=1, highlightbackground="#444")
+        cv_db = tk.Canvas(f_art_preview, width=mbdb_preview_w, height=mbdb_preview_h, bg="#111", highlightthickness=1, highlightbackground="#444")
+        cv_mb.pack(side=tk.LEFT, padx=5)
+        cv_db.pack(side=tk.LEFT, padx=5)
+
+        def draw_art_preview(canvas, value, preview_paths, label):
+            canvas.delete("all")
+            base = self.get_briefing_art_base_name(value)
+            path_info = preview_paths.get(base.lower()) if base else None
+            if not path_info:
+                canvas.create_rectangle(1, 1, mbdb_preview_w - 1, mbdb_preview_h - 1, outline="#333", fill="#181818")
+                canvas.create_text(mbdb_preview_w // 2, 68, text=f"{label}: no PNG preview", fill="#777", font=("Arial", 9, "bold"))
+                canvas.create_text(mbdb_preview_w // 2, 92, text=base or "manual value", fill="#555", font=("Arial", 9))
+                return
+
+            display_base, path = path_info
+            cache_key = (path.lower(), mbdb_thumb_w, mbdb_thumb_h)
+            if cache_key not in self.mbpix_previews:
+                try:
+                    img = Image.open(path)
+                    img.thumbnail((mbdb_thumb_w, mbdb_thumb_h), Image.Resampling.LANCZOS)
+                    img = img.convert("RGB")
+                    thumb = Image.new("RGB", (mbdb_thumb_w, mbdb_thumb_h), "#111")
+                    thumb.paste(img, ((mbdb_thumb_w - img.width) // 2, (mbdb_thumb_h - img.height) // 2))
+                    self.mbpix_previews[cache_key] = ImageTk.PhotoImage(thumb)
+                except:
+                    self.mbpix_previews[cache_key] = None
+
+            img = self.mbpix_previews.get(cache_key)
+            if img:
+                canvas.create_image(mbdb_preview_w // 2, 78, image=img)
+            else:
+                canvas.create_rectangle(19, 4, mbdb_preview_w - 19, 154, outline="#553333", fill="#221111")
+                canvas.create_text(mbdb_preview_w // 2, 78, text="Preview load error", fill="#AA7777", font=("Arial", 9, "bold"))
+            canvas.create_text(mbdb_preview_w // 2, mbdb_preview_h - 16, text=display_base, fill="#CCCCCC", font=("Arial", 9, "bold"))
+
+        def refresh_art_previews(event=None):
+            draw_art_preview(cv_mb, cb_mb.get(), mb_preview_paths, "MB")
+            draw_art_preview(cv_db, cb_db.get(), db_preview_paths, "DB")
+
+        cb_mb.bind("<<ComboboxSelected>>", refresh_art_previews)
+        cb_mb.bind("<KeyRelease>", refresh_art_previews)
+        cb_mb.bind("<FocusOut>", refresh_art_previews)
+        cb_db.bind("<<ComboboxSelected>>", refresh_art_previews)
+        cb_db.bind("<KeyRelease>", refresh_art_previews)
+        cb_db.bind("<FocusOut>", refresh_art_previews)
+        win.after(100, refresh_art_previews)
 
         # SKY SELECTION
-        f_sky_lbl = tk.Frame(win, bg="#222"); f_sky_lbl.pack(pady=(10,0))
+        f_sky_lbl = tk.Frame(win, bg="#222"); f_sky_lbl.pack(pady=(2,0))
         tk.Label(f_sky_lbl, text="Select Sky:", bg="#222", fg="white", font=("bold", 11)).pack(side=tk.LEFT, padx=5)
         
         current_sky_name = os.path.basename(self.lvl_info['sky']).replace(".base", "").replace(".bas", "")
         lbl_sky_current = tk.Label(f_sky_lbl, text=f"[{current_sky_name}]", bg="#222", fg="#00FF00", font=("Arial", 10))
         lbl_sky_current.pack(side=tk.LEFT)
 
-        fr_sky = tk.Frame(win, bg="#333", bd=2, relief="sunken"); fr_sky.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
-        cv_s = tk.Canvas(fr_sky, bg="#111", highlightthickness=0); sb_s = tk.Scrollbar(
+        sky_w, sky_h = 140, 90
+        sky_cols = 3
+        sky_canvas_w = sky_cols * (sky_w + 10) + 10
+        fr_sky = tk.Frame(win, bg="#333", bd=2, relief="sunken"); fr_sky.pack(fill=tk.Y, expand=True, padx=10, pady=5)
+        cv_s = tk.Canvas(fr_sky, width=sky_canvas_w, bg="#111", highlightthickness=0); sb_s = tk.Scrollbar(
             fr_sky,
             command=cv_s.yview,
             bg="#00B8B8",
@@ -462,12 +555,13 @@ class DialogMixin:
         )
         cv_s.config(yscrollcommand=sb_s.set); sb_s.pack(side=tk.RIGHT, fill=tk.Y)
         sb_s.config(bg=SCROLL_BG, activebackground=SCROLL_ACTIVE, troughcolor="#444")
-        cv_s.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        cv_s.pack(side=tk.LEFT, fill=tk.Y, expand=True)
 
         def draw_skies():
-            cv_s.delete("all"); w = cv_s.winfo_width()
-            if w < 50: w = 400
-            sky_w, sky_h = 140, 90; cols = max(1, w // (sky_w + 10)); r, c = 0, 0
+            cv_s.delete("all")
+            w = sky_canvas_w
+            cols = sky_cols
+            r, c = 0, 0
             
             raw_sky = self.lvl_info['sky'].lower().replace("\\", "/")
             base_name = os.path.basename(raw_sky)
@@ -485,7 +579,15 @@ class DialogMixin:
                 if file_base_name not in self.sky_previews:
                     try: 
                         path = resource_path(os.path.join("skies", f))
-                        img = Image.open(path).resize((130, 70), Image.Resampling.LANCZOS)
+                        img = Image.open(path).convert("RGB")
+                        target_w, target_h = 130, 70
+                        scale = max(target_w / img.width, target_h / img.height)
+                        resized_w = max(target_w, int(img.width * scale))
+                        resized_h = max(target_h, int(img.height * scale))
+                        img = img.resize((resized_w, resized_h), Image.Resampling.LANCZOS)
+                        left = max(0, (resized_w - target_w) // 2)
+                        top = max(0, (resized_h - target_h) // 2)
+                        img = img.crop((left, top, left + target_w, top + target_h))
                         self.sky_previews[file_base_name] = ImageTk.PhotoImage(img)
                     except: 
                         img = Image.new("RGB", (130, 70), "#300")
@@ -520,27 +622,21 @@ class DialogMixin:
         cb_movie = ttk.Combobox(f_media, values=movie_options, width=20) 
         cb_movie.grid(row=1, column=1, padx=5, sticky="w")
         
-        current_movie = self.lvl_info.get('movie', "None")
-        if current_movie.lower().startswith("mov/"): current_movie = current_movie[4:] 
-        elif current_movie.lower().startswith("mov:"): current_movie = current_movie[4:]
-        cb_movie.set(current_movie)
+        current_movie = self.get_movie_filename(self.lvl_info.get('movie', "None")) if hasattr(self, "get_movie_filename") else ""
+        cb_movie.set(current_movie or "None")
 
         tk.Label(f_media, text="(You can select from list or type custom values)", bg="#222", fg="#777", font=("Arial", 8)).grid(row=2, column=0, columnspan=2, pady=5)
 
         def save():
             new_title = e_title.get()
-            new_mbmap = e_mb.get().strip() or "MB_53.IFF"
-            new_dbmap = e_db.get().strip() or "DB_53.IFF"
+            new_mbmap = self.normalize_briefing_art_for_export(cb_mb.get(), "MB_53.IFF")
+            new_dbmap = self.normalize_briefing_art_for_export(cb_db.get(), "DB_53.IFF")
             new_music = cb_music.get()
             
             raw_movie = cb_movie.get().strip()
-            if raw_movie == "None" or raw_movie == "":
+            new_movie = self.get_movie_filename(raw_movie) if hasattr(self, "get_movie_filename") else raw_movie
+            if not new_movie:
                 new_movie = "None"
-            else:
-                if not raw_movie.lower().startswith("mov/") and not raw_movie.lower().startswith("mov:"):
-                     new_movie = f"mov/{raw_movie}"
-                else:
-                     new_movie = raw_movie.replace(":", "/")
 
             changed = (
                 self.lvl_info['title'] != new_title or
@@ -563,7 +659,7 @@ class DialogMixin:
         tk.Button(win, text="CONFIRM", command=save, bg="#008800", fg="white", width=20).pack(pady=15)
         win.protocol("WM_DELETE_WINDOW", close_dialog)
         win.bind("<Escape>", lambda e: close_dialog())
-        self.center_modal_dialog(win, 500, 700)
+        self.center_modal_dialog(win, 560, 780)
         win.grab_set()
         win.focus_set()
         self.root.wait_window(win)

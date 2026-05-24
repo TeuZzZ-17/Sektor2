@@ -1,8 +1,5 @@
-import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
-from PIL import Image, ImageTk, ImageDraw
+from tkinter import filedialog, messagebox
 import os
-import copy
 import re
 import platform
 import subprocess
@@ -11,6 +8,53 @@ from sektor_constants import *
 from sektor_paths import resource_path
 
 class MapIOMixin:
+
+    def get_movie_filename(self, value):
+        value = str(value or "").strip().strip("\"'")
+        if not value or value.lower() == "none":
+            return ""
+
+        normalized = value.replace("\\", "/")
+        while ":" in normalized:
+            prefix, suffix = normalized.split(":", 1)
+            if prefix.replace("\\", "/").lower().endswith("mov"):
+                normalized = suffix
+                continue
+            break
+
+        parts = [part for part in normalized.strip("/").split("/") if part]
+        if not parts:
+            return ""
+        filename = parts[-1].strip().strip("\"'")
+        if filename.lower() == "none":
+            return ""
+        return filename
+
+    def normalize_movie_path_for_export(self, value):
+        filename = self.get_movie_filename(value)
+        if not filename:
+            return ""
+        return f"mov:{filename}"
+
+    def get_briefing_art_base_name(self, value):
+        value = str(value or "").strip().strip("\"'")
+        if not value:
+            return ""
+
+        normalized = value.replace("\\", "/")
+        parts = [part for part in normalized.strip("/").split("/") if part]
+        if not parts:
+            return ""
+        name = os.path.splitext(parts[-1].strip())[0]
+        return name
+
+    def normalize_briefing_art_for_export(self, value, default_name):
+        base_name = self.get_briefing_art_base_name(value)
+        if not base_name:
+            base_name = self.get_briefing_art_base_name(default_name)
+        if not base_name:
+            return default_name
+        return f"{base_name}.IFF"
 
     def split_user_script_block(self, raw_text):
         marker = re.search(r'(?im)^[ \t]*;[ \t]*---[ \t]*USER SCRIPT[ \t]*---[ \t\r]*$', raw_text)
@@ -29,16 +73,10 @@ class MapIOMixin:
             script_block = script_block[2:]
         elif script_block.startswith("\n") or script_block.startswith("\r"):
             script_block = script_block[1:]
-        lines = script_block.splitlines()
-        while lines and not lines[-1].strip():
-            lines.pop()
-        if lines and re.match(r'^\s*;-{5,}\s*$', lines[-1]):
-            lines.pop()
-        while lines and not lines[-1].strip():
-            lines.pop()
+        script_block = re.sub(r'(?m)(?:\r?\n)?^[ \t]*;-{5,}[ \t]*(?:\r?\n)?\s*$', '', script_block)
 
         parse_text = raw_text[:marker.start()] + raw_text[block_end:]
-        return "\n".join(lines), parse_text
+        return script_block, parse_text
 
     def extract_level_line_value(self, raw_text, key):
         in_level = False
@@ -286,12 +324,24 @@ class MapIOMixin:
                     if token_lower == 'begin_squad':
                         custom_name = squad_comment_names[squad_comment_idx] if squad_comment_idx < len(squad_comment_names) else None
                         squad_comment_idx += 1
-                        current_squad = {'owner':1, 'veh':1, 'num':1, 'hidden':False, 'custom_name':custom_name, 'x':-1, 'y':-1}
+                        current_squad = {'owner':1, 'veh':1, 'num':1, 'hidden':False, 'useable':False, 'custom_name':custom_name, 'x':-1, 'y':-1}
 
                     elif token_lower == 'begin_robo':
                         custom_name = host_comment_names[host_comment_idx] if host_comment_idx < len(host_comment_names) else None
                         host_comment_idx += 1
-                        current_host = {'owner':1, 'veh':56, 'energy':500000, 'pos_y':DEFAULT_HOST_POS_Y, 'custom_name':custom_name, 'x':-1, 'y':-1, 'hidden':False}
+                        current_host = {
+                            'owner':1,
+                            'veh':56,
+                            'energy':500000,
+                            'pos_y':DEFAULT_HOST_POS_Y,
+                            'reload_const':DEFAULT_HOST_RELOAD_CONST,
+                            'viewangle':DEFAULT_HOST_VIEWANGLE,
+                            'custom_name':custom_name,
+                            'x':-1,
+                            'y':-1,
+                            'hidden':False,
+                            'ai': self.make_host_ai()
+                        }
 
                     elif token_lower == 'begin_level': reading_level = True
                     elif token_lower == 'begin_mbmap': reading_mb = True
@@ -366,10 +416,14 @@ class MapIOMixin:
 
                     elif token_lower == 'end':
                         if current_squad:
-                            if current_squad['x'] != -1: self.squads.append(current_squad)
+                            if current_squad['x'] != -1:
+                                self.ensure_squad_defaults(current_squad)
+                                self.squads.append(current_squad)
                             current_squad = None
                         elif current_host:
-                            if current_host['x'] != -1: self.host_stations.append(current_host)
+                            if current_host['x'] != -1:
+                                self.ensure_host_defaults(current_host)
+                                self.host_stations.append(current_host)
                             current_host = None
                         elif current_gate: current_gate = None
                         elif current_item: current_item = None
@@ -390,18 +444,19 @@ class MapIOMixin:
                                 self.lvl_info['music'] = raw_music
                         elif token_lower == 'movie':
                              raw_mov = get_val(iterator)
-                             self.lvl_info['movie'] = raw_mov.replace(':', '/')
+                             self.lvl_info['movie'] = self.get_movie_filename(raw_mov) or "None"
                     elif reading_mb:
                         if token_lower == 'name':
-                            self.lvl_info['mbmap'] = get_val(iterator)
+                            self.lvl_info['mbmap'] = self.normalize_briefing_art_for_export(get_val(iterator), "MB_53.IFF")
                     elif reading_db:
                         if token_lower == 'name':
-                            self.lvl_info['dbmap'] = get_val(iterator)
+                            self.lvl_info['dbmap'] = self.normalize_briefing_art_for_export(get_val(iterator), "DB_53.IFF")
 
                     elif current_squad:
                         if token_lower == 'owner': current_squad['owner'] = int(get_val(iterator))
                         elif token_lower == 'vehicle': current_squad['veh'] = int(get_val(iterator))
                         elif token_lower == 'num': current_squad['num'] = int(get_val(iterator))
+                        elif token_lower == 'useable': current_squad['useable'] = True
                         elif token_lower == 'mb_status':
                              val = get_val(iterator)
                              if val.lower() == 'unknown': current_squad['hidden'] = True
@@ -419,6 +474,10 @@ class MapIOMixin:
                         elif token_lower == 'vehicle': current_host['veh'] = int(get_val(iterator))
                         elif token_lower == 'energy': current_host['energy'] = int(get_val(iterator))
                         elif token_lower == 'pos_y': current_host['pos_y'] = int(get_val(iterator))
+                        elif token_lower == 'reload_const': current_host['reload_const'] = int(get_val(iterator))
+                        elif token_lower == 'viewangle': current_host['viewangle'] = int(float(get_val(iterator)))
+                        elif token_lower in HOST_AI_FIELDS:
+                             current_host.setdefault('ai', self.make_host_ai())[token_lower] = int(get_val(iterator))
                         elif token_lower == 'mb_status':
                              val = get_val(iterator)
                              if val.lower() == 'unknown': current_host['hidden'] = True
@@ -488,6 +547,7 @@ class MapIOMixin:
             self.grids['hgt'] = grids_loaded.get('hgt_map', [[DEFAULT_HGT]*w for _ in range(h)])
             self.grids['blg'] = grids_loaded.get('blg_map', [['00']*w for _ in range(h)])
             self.normalize_border_heights()
+            self.sync_all_gem_building_visuals(mark_dirty=False)
             if raw_title is not None:
                 self.lvl_info['title'] = raw_title
             self.custom_tech_names.update(tech_comment_names)
@@ -572,25 +632,44 @@ class MapIOMixin:
         try:
             with open(saved_path, "w", encoding="utf-8") as f:
                 self.normalize_border_heights()
+                self.sync_all_gem_building_visuals(mark_dirty=True)
                 def w(txt): f.write(txt + "\n")
-                w("; --- Generated by Sektor v14.1 (DRONES + HOST) ---")
+                w("; --- Generated by Sektor 2 ---")
                 w(";------------------------------------------------------------")
                 w("begin_level")
                 w(f"   set = {self.set_folder.replace('set','')}")
                 w(f"   sky = {self.lvl_info['sky']}")
-                w(f"   title_default = {self.lvl_info['title']}")
-                w("   slot0 = palette/standard.pal")
-
+                w("   slot0        = palette/standard.pal")
+                w("   slot1        = palette/red.pal")
+                w("   slot2        = palette/blau.pal")
+                w("   slot3        = palette/gruen.pal")
+                w("   slot4        = palette/inverse.pal")
+                w("   slot5        = palette/invdark.pal")
+                w("   slot6        = palette/sw.pal")
+                w("   slot7        = palette/invtuerk.pal")
+                w(f"   title_default        = {self.lvl_info['title']}")
+                w(f"   title_deutsch        = {self.lvl_info['title']}")
+                w(f"   title_english        = {self.lvl_info['title']}")
+                movie_path = self.normalize_movie_path_for_export(self.lvl_info.get('movie'))
+                if movie_path:
+                    w(f"   movie                = {movie_path}")
                 if self.lvl_info.get('music') and self.lvl_info['music'] != "None":
-                    w(f"   ambiencetrack = {self.lvl_info['music']}")
-
-                if self.lvl_info.get('movie') and self.lvl_info['movie'] != "None":
-                    w(f"   movie = {self.lvl_info['movie']}")
+                    w(f"   ambiencetrack        = {self.lvl_info['music']}")
 
                 w("end")
                 w(";------------------------------------------------------------")
-                w("begin_mbmap"); w(f"   name          =  {self.lvl_info.get('mbmap', 'MB_53.IFF')}"); w("end")
-                w("begin_dbmap"); w(f"   name          =  {self.lvl_info.get('dbmap', 'DB_53.IFF')}"); w("end")
+                mbmap = self.normalize_briefing_art_for_export(self.lvl_info.get('mbmap'), "MB_53.IFF")
+                dbmap = self.normalize_briefing_art_for_export(self.lvl_info.get('dbmap'), "DB_53.IFF")
+                w("begin_mbmap")
+                w(f"   name          =  {mbmap}")
+                w("   size_x        = 480")
+                w("   size_y        = 480")
+                w("end")
+                w("begin_dbmap")
+                w(f"   name          =  {dbmap}")
+                w("   size_x        = 480")
+                w("   size_y        = 480")
+                w("end")
                 w(";------------------------------------------------------------")
                 for i in range(1, self.visible_gate_slots + 1):
                     g = self.gates[i]
@@ -624,7 +703,8 @@ class MapIOMixin:
                         if gm.get('hidden', False): w("   mb_status = unknown")
                         w("end"); w(";------------------------------------------------------------")
 
-                for h in self.get_host_stations_for_save(placed_hosts):
+                for export_index, h in enumerate(self.get_host_stations_for_save(placed_hosts)):
+                     self.ensure_host_defaults(h)
                      w("begin_robo")
                      w(f"   owner = {h['owner']}")
                      if h['custom_name']: w(f"   vehicle = {h['veh']} ; {h['custom_name']}")
@@ -638,31 +718,21 @@ class MapIOMixin:
 
                      if h.get('hidden', False): w("   mb_status = unknown")
 
-                     w("   reload_const = 576666")
-                     w("   viewangle = 12")
-                     w("   con_budget = 97")
-                     w("   con_delay = 30000")
-                     w("   def_budget = 97")
-                     w("   def_delay = 32000")
-                     w("   rec_budget = 93")
-                     w("   rec_delay = 23000")
-                     w("   rob_budget = 93")
-                     w("   rob_delay = 34000")
-                     w("   pow_budget = 60")
-                     w("   pow_delay = 0")
-                     w("   rad_budget = 0")
-                     w("   rad_delay = 0")
-                     w("   saf_budget = 60")
-                     w("   saf_delay = 33000")
-                     w("   cpl_budget = 95")
-                     w("   cpl_delay = 0")
+                     w(f"   reload_const = {h.get('reload_const', DEFAULT_HOST_RELOAD_CONST)}")
+                     w(f"   viewangle = {h.get('viewangle', DEFAULT_HOST_VIEWANGLE)}")
+                     if export_index > 0:
+                         ai = self.ensure_host_ai(h)
+                         for field in HOST_AI_FIELDS:
+                             w(f"   {field} = {ai[field]}")
                      w("end"); w(";------------------------------------------------------------")
 
                 for s in placed_squads:
+                    self.ensure_squad_defaults(s)
                     w("begin_squad"); w(f"   owner = {s['owner']}")
                     if s['custom_name']: w(f"   vehicle = {s['veh']} ; {s['custom_name']}")
                     else: w(f"   vehicle = {s['veh']} ; {self.defs['veh'].get(s['veh'],'')}")
                     w(f"   num = {s['num']}");
+                    if s.get('useable', False): w("   useable")
                     if s['hidden']: w("   mb_status = unknown")
                     final_x, final_z = self.grid_to_world(s['x'], s['y'])
                     w(f"   pos_x = {final_x}"); w(f"   pos_z = {final_z}"); w("end")
@@ -677,7 +747,13 @@ class MapIOMixin:
                         for b in d['blg']: name = self.custom_tech_names.get(b, self.defs['blg'].get(b, '')); w(f"   building = {b:<4} ; {name}")
                         w("end")
                 w(";------------------------------------------------------------")
-                if self.script_content.strip(): w("; --- USER SCRIPT ---"); w(self.script_content); w(";------------------------------------------------------------")
+                w("; --- USER SCRIPT ---")
+                script_content = self.script_content or ""
+                if script_content:
+                    f.write(script_content)
+                    if not script_content.endswith(("\n", "\r")):
+                        f.write("\n")
+                w(";------------------------------------------------------------")
                 w("begin_maps")
 
                 map_types = [('typ_map', self.grids['type']),
@@ -713,7 +789,7 @@ class MapIOMixin:
             self.open_saved_map_file(saved_path)
         return True
 
-    def get_host_stations_for_save(self, host_stations=None):
+    def get_host_stations_for_save(self, host_stations=None, warn=True):
         player_owner = getattr(self, 'player_owner', 1)
         hosts = self.host_stations if host_stations is None else host_stations
         if not hosts:
@@ -722,18 +798,34 @@ class MapIOMixin:
         player_hosts = [h for h in hosts if h.get('owner') == player_owner]
         if not player_hosts:
             faction_name = self.get_faction_display_name(player_owner) if hasattr(self, 'get_faction_display_name') else str(player_owner)
-            try:
-                messagebox.showwarning(
-                    "Player Faction",
-                    f"Selected player faction has no host station: {player_owner:02d} - {faction_name}\n\n"
-                    "Host export order was left unchanged."
-                )
-            except:
-                pass
+            if warn:
+                try:
+                    messagebox.showwarning(
+                        "Player Faction",
+                        f"Selected player faction has no host station: {player_owner:02d} - {faction_name}\n\n"
+                        "Host export order was left unchanged."
+                    )
+                except:
+                    pass
             return hosts
 
         other_hosts = [h for h in hosts if h.get('owner') != player_owner]
         return player_hosts + other_hosts
+
+    def get_host_export_index(self, host, placed_only=True):
+        if host is None:
+            return None
+        hosts = self.host_stations
+        if placed_only:
+            hosts = [h for h in self.host_stations if self.map_cell_is_valid(h)]
+        ordered_hosts = self.get_host_stations_for_save(hosts, warn=False)
+        for export_index, ordered_host in enumerate(ordered_hosts):
+            if ordered_host is host:
+                return export_index
+        return None
+
+    def is_host_player_export_slot(self, host):
+        return self.get_host_export_index(host, placed_only=True) == 0
 
     def reset_map(self, confirm=True, track_history=True):
         if confirm and not messagebox.askyesno("RESET", "Wipe map?"): return
@@ -745,10 +837,24 @@ class MapIOMixin:
         self.gates = {i: {'active': False, 'x': -1, 'y': -1, 'keys': [], 'target': 0, 'closed_bp': 25, 'opened_bp': 26, 'hidden': False} for i in range(1, MAX_SPECIAL_SLOTS + 1)}
         self.items = {i: {'active': False, 'x': -1, 'y': -1, 'keys': [], 'countdown': 300000, 'inactive_bp': 35, 'active_bp': 36, 'trigger_bp': 37, 'type': 1, 'hidden': False} for i in range(1, MAX_SPECIAL_SLOTS + 1)}
         self.gems = {i: {'x': -1, 'y': -1, 'blg': 50, 'type': 3, 'actions': [], 'hidden': False} for i in range(1, MAX_SPECIAL_SLOTS + 1)}
+        self.script_content = DEFAULT_SCRIPT_CONTENT
+        self.script_text_widget = None
         self.visible_gate_slots = 1; self.visible_item_slots = 1; self.visible_gem_slots = 1
         self.squads = []; self.current_squad_index = -1
+        self.current_squad_data = {'owner': 1, 'veh': 1, 'num': 1, 'hidden': False, 'useable': False, 'custom_name': None}
         self.player_owner = 1
         self.host_stations = []; self.current_host_index = -1
+        self.current_host_data = {
+            'owner': 1,
+            'veh': 56,
+            'energy': 500000,
+            'pos_y': DEFAULT_HOST_POS_Y,
+            'reload_const': DEFAULT_HOST_RELOAD_CONST,
+            'viewangle': DEFAULT_HOST_VIEWANGLE,
+            'custom_name': None,
+            'hidden': False,
+            'ai': self.make_host_ai()
+        }
         if hasattr(self, 'cv_map'): self.draw_grid()
 
     def apply_borders(self):

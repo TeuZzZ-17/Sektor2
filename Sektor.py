@@ -84,7 +84,7 @@ class SektorEditor(
             'music': "None",   
             'movie': "None"    
         }
-        self.script_content = ""
+        self.script_content = DEFAULT_SCRIPT_CONTENT
         self.grids = {}
 
         # MULTI-SLOT SYSTEM
@@ -101,7 +101,7 @@ class SektorEditor(
 
         # SQUADS SYSTEM
         self.squads = []
-        self.current_squad_data = {'owner': 1, 'veh': 1, 'num': 1, 'hidden': False, 'custom_name': None}
+        self.current_squad_data = {'owner': 1, 'veh': 1, 'num': 1, 'hidden': False, 'useable': False, 'custom_name': None}
         self.current_squad_index = -1
         self._drag_squad_idx = -1
 
@@ -113,8 +113,11 @@ class SektorEditor(
             'veh': 56, 
             'energy': 500000,
             'pos_y': DEFAULT_HOST_POS_Y,
+            'reload_const': DEFAULT_HOST_RELOAD_CONST,
+            'viewangle': DEFAULT_HOST_VIEWANGLE,
             'custom_name': None,
-            'hidden': False 
+            'hidden': False,
+            'ai': self.make_host_ai()
         }
         self.current_host_index = -1
         self._drag_host_idx = -1

@@ -1,10 +1,7 @@
 import tkinter as tk
 import tkinter.font as tkfont
-from tkinter import filedialog, messagebox, ttk
-from PIL import Image, ImageTk, ImageDraw
+from tkinter import messagebox
 import os
-import platform
-import subprocess
 import time
 
 from sektor_constants import *
@@ -96,6 +93,69 @@ class CanvasMixin:
             key = (data.get('inactive_bp'), data.get('active_bp'), data.get('trigger_bp'))
             return self.ITEM_AUTO_VISUALS.get(key)
         return None
+
+    def format_gem_building_hex(self, building_id):
+        try:
+            value = int(building_id)
+        except (TypeError, ValueError):
+            return None
+        if not (0 <= value <= 255):
+            return None
+        return f"{value:02x}"
+
+    def get_gem_cell(self, data):
+        if not data or data.get('x', -1) == -1 or data.get('y', -1) == -1:
+            return None
+        x, y = data['x'], data['y']
+        if not (0 <= x < self.mw and 0 <= y < self.mh):
+            return None
+        return (x, y)
+
+    def apply_gem_building_visual(self, data, cell=None, building_id=None, mark_dirty=True):
+        cell = cell or self.get_gem_cell(data)
+        building_hex = self.format_gem_building_hex(data.get('blg') if building_id is None else building_id)
+        if not cell or building_hex is None:
+            return False
+        x, y = cell
+        if str(self.grids['blg'][y][x]).lower() == building_hex:
+            return False
+        self.grids['blg'][y][x] = building_hex
+        if mark_dirty:
+            self.dirty = True
+        return True
+
+    def clear_gem_building_visual_if_matches(self, data, cell=None, building_id=None, mark_dirty=True):
+        cell = cell or self.get_gem_cell(data)
+        building_hex = self.format_gem_building_hex(data.get('blg') if building_id is None else building_id)
+        if not cell or building_hex is None:
+            return False
+        x, y = cell
+        if str(self.grids['blg'][y][x]).lower() != building_hex:
+            return False
+        self.grids['blg'][y][x] = "00"
+        if mark_dirty:
+            self.dirty = True
+        return True
+
+    def sync_gem_building_visual(self, data, old_cell=None, old_building=None, mark_dirty=True):
+        changed = False
+        new_cell = self.get_gem_cell(data)
+        if old_cell and old_cell != new_cell:
+            changed = self.clear_gem_building_visual_if_matches(
+                data,
+                cell=old_cell,
+                building_id=old_building if old_building is not None else data.get('blg'),
+                mark_dirty=mark_dirty
+            ) or changed
+        if new_cell:
+            changed = self.apply_gem_building_visual(data, cell=new_cell, mark_dirty=mark_dirty) or changed
+        return changed
+
+    def sync_all_gem_building_visuals(self, mark_dirty=True):
+        changed = False
+        for i in range(1, getattr(self, "visible_gem_slots", 1) + 1):
+            changed = self.sync_gem_building_visual(self.gems[i], mark_dirty=mark_dirty) or changed
+        return changed
 
     def cell_matches_auto_visual(self, cell, visual):
         if not cell or not visual:
@@ -449,9 +509,9 @@ class CanvasMixin:
             canvas = self.cv_map
 
         if palette:
-            icons = overlays[:4]
+            icons = [icon for icon in overlays if icon != "hidden"][:4]
         else:
-            icons = [icon for icon in overlays if icon not in PALETTE_ONLY_BUILDING_OVERLAYS][:4]
+            icons = [icon for icon in overlays if icon != "hidden" and icon not in PALETTE_ONLY_BUILDING_OVERLAYS][:4]
         if not icons:
             return
         count = len(icons)
@@ -495,7 +555,7 @@ class CanvasMixin:
                 iy = max(y + 2, min(y + sz - icon_sz - 2, iy))
                 canvas.create_image(ix, iy, image=img, anchor=tk.NW, tags=tag)
 
-    def draw_building_markers(self, x, y, sz, tag):
+    def draw_building_markers(self, x, y, sz, tag, color=MARKER_COLOR):
         inset = max(3, sz // 16)
         max_segment_len = max(2, sz - (inset * 2))
         segment_len = min(max(8, sz // 3), max_segment_len)
@@ -509,10 +569,10 @@ class CanvasMixin:
         top = max(y + inset, cy - half_len)
         bottom = min(y + sz - inset, cy + half_len)
 
-        self.cv_map.create_line(left, y + inset, right, y + inset, fill=MARKER_COLOR, width=width, tags=tag)
-        self.cv_map.create_line(left, y + sz - inset, right, y + sz - inset, fill=MARKER_COLOR, width=width, tags=tag)
-        self.cv_map.create_line(x + inset, top, x + inset, bottom, fill=MARKER_COLOR, width=width, tags=tag)
-        self.cv_map.create_line(x + sz - inset, top, x + sz - inset, bottom, fill=MARKER_COLOR, width=width, tags=tag)
+        self.cv_map.create_line(left, y + inset, right, y + inset, fill=color, width=width, tags=tag)
+        self.cv_map.create_line(left, y + sz - inset, right, y + sz - inset, fill=color, width=width, tags=tag)
+        self.cv_map.create_line(x + inset, top, x + inset, bottom, fill=color, width=width, tags=tag)
+        self.cv_map.create_line(x + sz - inset, top, x + sz - inset, bottom, fill=color, width=width, tags=tag)
 
     def get_editor_height_value(self, r, c):
         try:
@@ -533,14 +593,25 @@ class CanvasMixin:
             canvas.create_text(x + dx, y + dy, text=text, fill=outline, font=font, anchor=anchor, tags=tag)
         canvas.create_text(x, y, text=text, fill=fill, font=font, anchor=anchor, tags=tag)
 
-    def draw_cell_outline(self, x, y, sz, tag, color="white", width=3, inset=2):
+    def draw_cell_outline(self, x, y, sz, tag, color=SELECTION_COLOR, width=SELECTION_OUTLINE_WIDTH, inset=2):
+        outline_width = max(width, SELECTION_OUTLINE_WIDTH)
+        shadow_inset = max(0, inset - 2)
+        self.cv_map.create_rectangle(
+            x + shadow_inset,
+            y + shadow_inset,
+            x + sz - shadow_inset,
+            y + sz - shadow_inset,
+            outline=SELECTION_SHADOW_COLOR,
+            width=outline_width + 2,
+            tags=tag
+        )
         self.cv_map.create_rectangle(
             x + inset,
             y + inset,
             x + sz - inset,
             y + sz - inset,
             outline=color,
-            width=width,
+            width=outline_width,
             tags=tag
         )
 
@@ -864,6 +935,11 @@ class CanvasMixin:
 
         if self.mode == "HGT":
             editor_height = self.get_editor_height_value(r, c)
+            bid = self.grids['blg'][r][c]
+            if bid != '00':
+                img = self.get_img('blg', bid, sz)
+                if img:
+                    self.cv_map.create_image(x, y, image=img, anchor=tk.NW, tags=tag)
             self.draw_height_overlay(x, y, sz, editor_height, tag)
             self.cv_map.create_rectangle(x, y, x+sz, y+sz, outline="#3A3A3A", width=1, tags=tag)
             self.draw_height_number(x, y, sz, editor_height, tag)
@@ -891,8 +967,6 @@ class CanvasMixin:
             img = self.get_img('blg', bid, sz)
             if img: self.cv_map.create_image(x,y,image=img, anchor=tk.NW, tags=tag)
             
-            if is_custom_building:
-                 self.cv_map.create_rectangle(x+1,y+1,x+sz-1,y+sz-1, outline=CUSTOM_BORDER_COLOR, width=3, tags=tag)
             self.draw_building_overlays(x, y, sz, bid, tag)
 
         # --- TEXT RENDERING PRIORITY & COLOR UNIFICATION ---
@@ -952,8 +1026,9 @@ class CanvasMixin:
         if fid != 0:
             self.draw_owner_indicator(x, y, sz, fid, tag)
 
-        if bid != '00' and not is_custom_building:
-            self.draw_building_markers(x, y, sz, tag)
+        if bid != '00':
+            marker_color = CUSTOM_BORDER_COLOR if is_custom_building else MARKER_COLOR
+            self.draw_building_markers(x, y, sz, tag, color=marker_color)
 
         # HOST STATIONS
         host_indexes_here = self.render_hosts_by_cell.get((c, r), [])
@@ -1046,7 +1121,9 @@ class CanvasMixin:
         for it in items:
             cell_x, y = c*cw+10, r*ch+10
             x = cell_x + ((cw - sz) // 2 if self.mode == "OWN" else 0)
-            if it==sel_val: self.cv_pal.create_rectangle(x-3,y-3,x+sz+3,y+sz+20, fill="#008080", outline="")
+            if it==sel_val:
+                self.cv_pal.create_rectangle(x-6, y-6, x+sz+6, y+sz+23, fill=SELECTION_SHADOW_COLOR, outline="")
+                self.cv_pal.create_rectangle(x-3, y-3, x+sz+3, y+sz+20, fill="#004A56", outline=SELECTION_COLOR, width=3)
 
             img = None
             lbl = str(it)
@@ -1085,7 +1162,11 @@ class CanvasMixin:
         elif self.mode=="OWN": return list(FACTIONS.keys())
         elif self.mode=="HGT":
             return list(range(HGT_MIN, HGT_MAX + 1))
-        elif self.mode=="BLG": return self.lists['blg']
+        elif self.mode=="BLG":
+            return [
+                bid for bid in self.lists['blg']
+                if "hidden" not in getattr(self, "building_overlays", {}).get(str(bid).lower(), [])
+            ]
         return []
 
     def set_sel(self, val):
@@ -1330,10 +1411,14 @@ class CanvasMixin:
                              ):
                                  ox, oy = current_data['x'], current_data['y']
                                  old_cell = (ox, oy)
+                                 old_gem_building = current_data.get('blg') if self.mode == "GEM" else None
                                  old_visual = self.get_special_auto_visual(self.mode, current_data)
                                  current_data['x'], current_data['y'] = cx, cy
                                  if self.mode in ["GATE", "ITEM"]:
                                      self.sync_special_auto_visual(self.mode, current_data, old_cell=old_cell, old_visual=old_visual)
+                                 elif self.mode == "GEM":
+                                     self.sync_gem_building_visual(current_data, old_cell=old_cell, old_building=old_gem_building)
+                                     self.dirty = True
                                  self.invalidate_render_indexes()
                                  self.redraw_cells((ox, oy), (cx, cy))
                 return
@@ -1374,10 +1459,14 @@ class CanvasMixin:
 
                     old_x, old_y = current_data['x'], current_data['y']
                     old_cell = (old_x, old_y) if old_x != -1 and old_y != -1 else None
+                    old_gem_building = current_data.get('blg') if target_mode == "GEM" else None
                     old_visual = self.get_special_auto_visual(target_mode, current_data)
                     current_data['x'] = cx; current_data['y'] = cy
                     if target_mode in ["GATE", "ITEM"]:
                         self.sync_special_auto_visual(target_mode, current_data, old_cell=old_cell, old_visual=old_visual)
+                    elif target_mode == "GEM":
+                        self.sync_gem_building_visual(current_data, old_cell=old_cell, old_building=old_gem_building)
+                        self.dirty = True
                     self.invalidate_render_indexes()
                     self.redraw_cells((old_x, old_y), (cx, cy))
             return
@@ -1574,6 +1663,7 @@ class CanvasMixin:
             for i, gm in self.gems.items():
                 if gm['x'] == cx and gm['y'] == cy:
                     push_right_undo_once()
+                    self.clear_gem_building_visual_if_matches(gm)
                     gm['x'] = -1; gm['y'] = -1
                     self.invalidate_render_indexes()
                     self.redraw_cells((cx, cy)); return

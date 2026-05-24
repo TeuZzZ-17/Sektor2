@@ -1,11 +1,7 @@
 import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
-from PIL import Image, ImageTk, ImageDraw
-import os
+from tkinter import messagebox, ttk
 import copy
 import re
-import platform
-import subprocess
 
 from sektor_constants import *
 
@@ -14,12 +10,10 @@ class UIMixin:
     GEM_MODEL_LABELS = {
         4: "04 - gem0",
         7: "07 - gem_with_flak1",
-        9: "09 - gem_with_flak2",
         15: "15 - gem_weapon_power",
         16: "16 - gem_new_building",
         50: "50 - gem_more_shield",
         51: "51 - gem_heavy_weapon",
-        58: "58 - fuck_gem_sectors",
         60: "60 - gem_more_roboflak",
         61: "61 - gem_power_roboflak",
         65: "65 - gem_more_shield",
@@ -27,12 +21,10 @@ class UIMixin:
     GEM_MODEL_VALUES = [
         "04 - gem0",
         "07 - gem_with_flak1",
-        "09 - gem_with_flak2",
         "15 - gem_weapon_power",
         "16 - gem_new_building",
         "50 - gem_more_shield",
         "51 - gem_heavy_weapon",
-        "58 - fuck_gem_sectors",
         "60 - gem_more_roboflak",
         "61 - gem_power_roboflak",
         "65 - gem_more_shield",
@@ -137,15 +129,7 @@ class UIMixin:
         return self.parse_leading_int(value)
 
     def format_host_altitude_value(self, value):
-        if value == DEFAULT_HOST_POS_Y:
-            return "Default"
         return str(value)
-
-    def parse_host_altitude_value(self, value):
-        value = str(value).strip()
-        if not value or value.lower() == "default":
-            return DEFAULT_HOST_POS_Y
-        return int(value)
 
     def parse_leading_int(self, value):
         match = re.match(r'^\s*(\d+)', str(value))
@@ -164,6 +148,24 @@ class UIMixin:
         if name:
             return f"{item_id} - {name}"
         return str(item_id)
+
+    def format_gem_action_for_list(self, action):
+        target_type = action.get('target_type', '')
+        target_labels = {
+            'modify_vehicle': ('Vehicle', 'veh'),
+            'modify_weapon': ('Weapon', 'weapon'),
+            'modify_building': ('Building', 'blg'),
+        }
+        label, defs_key = target_labels.get(
+            target_type,
+            (target_type.replace('modify_', '').replace('_', ' ').title() or "Target", None)
+        )
+        target_id = action.get('id', 0)
+        target_name = self.defs.get(defs_key, {}).get(target_id) if defs_key else None
+        target_text = f"{label} {target_id}"
+        if target_name:
+            target_text += f" - {target_name}"
+        return f"{target_text} | {action.get('param', '')} = {action.get('val', '')}"
 
     def build_gui(self):
         self.f_main = tk.Frame(self.root, bg="#222")
@@ -1031,6 +1033,7 @@ class UIMixin:
             def rem_slot():
                 self.push_undo_snapshot()
                 idx = self.visible_gem_slots
+                self.clear_gem_building_visual_if_matches(self.gems[idx])
                 self.gems[idx] = {'x': -1, 'y': -1, 'blg': 50, 'type': 3, 'actions': [], 'hidden': False}
                 self.visible_gem_slots -= 1
                 if self.current_gem_slot > self.visible_gem_slots: self.current_gem_slot = self.visible_gem_slots
@@ -1039,10 +1042,10 @@ class UIMixin:
 
         data = self.gems[self.current_gem_slot]
 
-        # 2. PROPERTIES (MODEL & TYPE)
+        # 2. PROPERTIES (BUILDING & TYPE)
         f_prop = tk.Frame(p, bg="#1a1a1a"); f_prop.pack(anchor=tk.CENTER, pady=10)
 
-        tk.Label(f_prop, text="Gem Model:", fg="white", bg="#1a1a1a").grid(row=0, column=0, sticky="e", padx=5, pady=2)
+        tk.Label(f_prop, text="Building ID:", fg="white", bg="#1a1a1a").grid(row=0, column=0, sticky="e", padx=5, pady=2)
 
         cb_gem_model = ttk.Combobox(f_prop, values=self.GEM_MODEL_VALUES, width=26)
         cb_gem_model.grid(row=0, column=1, sticky="w", padx=5, pady=2)
@@ -1052,12 +1055,17 @@ class UIMixin:
             new_blg = self.parse_gem_model_value(cb_gem_model.get())
             if new_blg is None:
                 if show_warning:
-                    messagebox.showwarning("Invalid Gem Model", "Enter a numeric building model ID, for example: 65")
+                    messagebox.showwarning("Invalid Building ID", "Enter a numeric Building ID, for example: 65")
                     cb_gem_model.set(self.format_gem_model_value(data['blg']))
                 return
             if new_blg != data['blg']:
                 self.push_undo_snapshot()
+                old_cell = self.get_gem_cell(data)
+                old_blg = data['blg']
                 data['blg'] = new_blg
+                self.sync_gem_building_visual(data, old_cell=old_cell, old_building=old_blg)
+                if old_cell:
+                    self.redraw_cells(old_cell)
                 self.dirty = True
             if cb_gem_model.get().strip().isdigit() or new_blg in self.GEM_MODEL_LABELS:
                 cb_gem_model.set(self.format_gem_model_value(new_blg))
@@ -1149,7 +1157,7 @@ class UIMixin:
 
         # LISTBOX & SCROLLBAR
         lb_frame = tk.Frame(p); lb_frame.pack(anchor=tk.CENTER, padx=0, pady=5)
-        lb = tk.Listbox(lb_frame, height=5, width=46, bg="#222", fg="white", selectbackground="#008888", selectforeground="white", font=("Courier", 9))
+        lb = tk.Listbox(lb_frame, height=7, width=56, bg="#222", fg="white", selectbackground=LISTBOX_SELECTION_BG, selectforeground=LISTBOX_SELECTION_FG, font=("Arial", 9))
         lb.pack(side=tk.LEFT)
         sb = tk.Scrollbar(
             lb_frame,
@@ -1169,8 +1177,7 @@ class UIMixin:
         def refresh_list():
             lb.delete(0, tk.END)
             for a in data['actions']:
-                tgt = a['target_type'].replace("modify_", "")
-                lb.insert(tk.END, f"{tgt}{a['id']}:{a['param']}={a['val']}")
+                lb.insert(tk.END, self.format_gem_action_for_list(a))
 
         def add_action():
             try:
@@ -1253,6 +1260,7 @@ class UIMixin:
         source_squad = self.current_squad_data
         if 0 <= self.current_squad_index < len(self.squads):
             source_squad = self.squads[self.current_squad_index]
+        self.ensure_squad_defaults(source_squad)
 
         tk.Label(p, text="SQUAD PLACER", bg="#FF4400", fg="black", font=("bold", 12)).pack(fill=tk.X, pady=(10, 6))
 
@@ -1336,6 +1344,7 @@ class UIMixin:
 
         f_opt = tk.Frame(editor, bg="#1a1a1a"); f_opt.pack(fill=tk.X, pady=(4, 2))
         self.var_squad_hid = tk.BooleanVar(value=source_squad.get('hidden', False))
+        self.var_squad_useable = tk.BooleanVar(value=source_squad.get('useable', False))
         def tog_hid():
             val = self.var_squad_hid.get()
             if self.current_squad_index != -1 and self.current_squad_index < len(self.squads):
@@ -1348,6 +1357,19 @@ class UIMixin:
             else:
                 self.current_squad_data['hidden'] = val
         tk.Checkbutton(f_opt, text="Hide in Briefing", variable=self.var_squad_hid, command=tog_hid, bg="#1a1a1a", fg="white", selectcolor="#444").pack(anchor=tk.W, padx=76)
+
+        def tog_useable():
+            val = self.var_squad_useable.get()
+            if self.current_squad_index != -1 and self.current_squad_index < len(self.squads):
+                cell = self.get_squad_cell(self.current_squad_index)
+                if self.squads[self.current_squad_index].get('useable', False) != val:
+                    self.push_undo_snapshot()
+                    self.squads[self.current_squad_index]['useable'] = val
+                    self.refresh_squad_list(redraw=False)
+                    self.redraw_cells(cell)
+            else:
+                self.current_squad_data['useable'] = val
+        tk.Checkbutton(f_opt, text="Movable by AI", variable=self.var_squad_useable, command=tog_useable, bg="#1a1a1a", fg="white", selectcolor="#444").pack(anchor=tk.W, padx=76)
 
         def add_squad_to_list():
             veh, custom_name = self.parse_definition_entry('veh', self.cb_veh.get(), 1, "Custom_Unit")
@@ -1362,6 +1384,7 @@ class UIMixin:
                 'veh': veh,
                 'num': num,
                 'hidden': self.var_squad_hid.get(),
+                'useable': self.var_squad_useable.get(),
                 'custom_name': custom_name,
                 'x': -1,
                 'y': -1
@@ -1376,12 +1399,13 @@ class UIMixin:
         f_actions.pack(anchor=tk.CENTER, pady=(6, 4))
         tk.Button(f_actions, text="ADD TO LIST", command=add_squad_to_list, bg="#FF4400", fg="black", font=("Arial", 9, "bold"), width=14).pack(side=tk.LEFT, padx=(0, 6))
         tk.Button(f_actions, text="DESELECT", command=self.deselect_squad, bg="#333", fg="white", font=("Arial", 9, "bold"), width=11).pack(side=tk.LEFT, padx=(0, 6))
-        tk.Button(f_actions, text="DELETE", command=self.delete_selected_squad, bg="#880000", fg="white", font=("Arial", 9, "bold"), width=10).pack(side=tk.LEFT)
+        tk.Button(f_actions, text="DELETE", command=self.delete_selected_squad, bg="#880000", fg="white", font=("Arial", 9, "bold"), width=10).pack(side=tk.LEFT, padx=(0, 6))
+        tk.Button(f_actions, text="DELETE ALL", command=self.delete_all_squads, bg="#AA0000", fg="white", font=("Arial", 9, "bold"), width=10).pack(side=tk.LEFT)
 
         f_list = tk.Frame(p, bg="#1a1a1a")
         f_list.pack(fill=tk.BOTH, expand=True, padx=12, pady=(6, 8))
 
-        self.lb_squads = tk.Listbox(f_list, bg="#222", fg="white", height=10, selectbackground="#008888", selectforeground="white")
+        self.lb_squads = tk.Listbox(f_list, bg="#222", fg="white", height=10, selectbackground=LISTBOX_SELECTION_BG, selectforeground=LISTBOX_SELECTION_FG, exportselection=False)
         self.lb_squads.pack(fill=tk.BOTH, expand=True)
         self.lb_squads.bind('<<ListboxSelect>>', self.on_squad_select)
 
@@ -1400,6 +1424,8 @@ class UIMixin:
         self.current_squad_data['owner'] = getattr(self, '_squad_control_owner', self.current_squad_data.get('owner', 1))
         if hasattr(self, 'var_squad_hid'):
             self.current_squad_data['hidden'] = self.var_squad_hid.get()
+        if hasattr(self, 'var_squad_useable'):
+            self.current_squad_data['useable'] = self.var_squad_useable.get()
 
     def deselect_squad(self):
         previous_cell = self.get_squad_cell(self.current_squad_index)
@@ -1426,6 +1452,7 @@ class UIMixin:
             'veh': s['veh'],
             'num': s['num'],
             'hidden': s.get('hidden', False),
+            'useable': s.get('useable', False),
             'custom_name': s.get('custom_name')
         }
         if hasattr(self, 'lb_squads') and self.lb_squads.winfo_exists():
@@ -1439,6 +1466,8 @@ class UIMixin:
                 self._syncing_squad_selection = False
         if hasattr(self, 'var_squad_hid'):
             self.var_squad_hid.set(s.get('hidden', False))
+        if hasattr(self, 'var_squad_useable'):
+            self.var_squad_useable.set(s.get('useable', False))
         if hasattr(self, 'e_squad_cnt') and self.e_squad_cnt.winfo_exists():
             self.e_squad_cnt.delete(0, tk.END)
             self.e_squad_cnt.insert(0, str(s['num']))
@@ -1479,23 +1508,184 @@ class UIMixin:
         self.redraw_cells(cell)
         self.dirty = True
 
+    def delete_all_squads(self):
+        if not self.squads:
+            return
+        if not messagebox.askyesno("Delete All Squads", "Delete all squads?"):
+            return
+        self.push_undo_snapshot()
+        self.squads.clear()
+        self.current_squad_index = -1
+        self._drag_squad_idx = -1
+        self.invalidate_render_indexes()
+        self.refresh_squad_list(redraw=False)
+        self.draw_grid()
+        self.dirty = True
+
     def refresh_squad_list(self, redraw=True):
         if not hasattr(self, 'lb_squads') or not self.lb_squads.winfo_exists(): return
-        self.lb_squads.delete(0, tk.END)
-        for i, s in enumerate(self.squads):
-            vname = s.get('custom_name') if s.get('custom_name') else self.defs['veh'].get(s['veh'], "Unknown")
-            faction_name = self.get_faction_display_name(s['owner'])
-            hidden_tag = " (Hidden)" if s.get('hidden', False) else ""
-            pos_tag = f"@ {s['x']},{s['y']}" if self.map_cell_is_valid(s) else "[UNPLACED]"
-            txt = f"{i}: {pos_tag} {faction_name} ID:{s['owner']} | {vname} ID:{s['veh']} | Num:{s['num']}{hidden_tag}"
-            self.lb_squads.insert(tk.END, txt)
-            color = FACTION_TEXT_COLORS.get(s['owner'], "#FFFFFF")
-            self.lb_squads.itemconfig(i, {'fg': color})
-            if i == self.current_squad_index:
-                self.lb_squads.selection_set(i)
-                self.lb_squads.activate(i)
+        self._syncing_squad_selection = True
+        try:
+            self.lb_squads.delete(0, tk.END)
+            for i, s in enumerate(self.squads):
+                vname = s.get('custom_name') if s.get('custom_name') else self.defs['veh'].get(s['veh'], "Unknown")
+                faction_name = self.get_faction_display_name(s['owner'])
+                tags = []
+                if s.get('hidden', False):
+                    tags.append("Hidden")
+                if s.get('useable', False):
+                    tags.append("Movable by AI")
+                prefix = "[UNPLACED] " if not self.map_cell_is_valid(s) else ""
+                txt_parts = [f"{prefix}{faction_name}", vname, f"x{s['num']}"] + tags
+                txt = " | ".join(txt_parts)
+                self.lb_squads.insert(tk.END, txt)
+                color = FACTION_TEXT_COLORS.get(s['owner'], "#FFFFFF")
+                self.lb_squads.itemconfig(i, {'fg': color})
+                if i == self.current_squad_index:
+                    self.lb_squads.selection_set(i)
+                    self.lb_squads.activate(i)
+                    self.lb_squads.see(i)
+        finally:
+            self._syncing_squad_selection = False
         if redraw:
             self.draw_grid()
+
+    def get_active_host_data_for_ui(self):
+        if 0 <= self.current_host_index < len(self.host_stations):
+            return self.host_stations[self.current_host_index]
+        return self.current_host_data
+
+    def update_host_ai_controls_state(self):
+        if not hasattr(self, "cb_host_ai_preset") or not self.cb_host_ai_preset.winfo_exists():
+            return
+        host = self.get_active_host_data_for_ui()
+        ai = self.ensure_host_ai(host)
+        preset_name = ai.get("preset", DEFAULT_HOST_AI_PRESET)
+        self.cb_host_ai_preset.set(preset_name)
+        if hasattr(self, "lbl_host_ai_description") and self.lbl_host_ai_description.winfo_exists():
+            self.lbl_host_ai_description.config(text=self.get_host_ai_preset_description(preset_name))
+
+        is_existing_host = 0 <= self.current_host_index < len(self.host_stations)
+        is_player_host = is_existing_host and self.is_host_player_export_slot(host)
+        state = "disabled" if is_player_host else "readonly"
+        self.cb_host_ai_preset.config(state=state)
+        if hasattr(self, "btn_host_ai_advanced") and self.btn_host_ai_advanced.winfo_exists():
+            self.btn_host_ai_advanced.config(state=tk.DISABLED if is_player_host else tk.NORMAL)
+
+    def apply_host_ai_preset(self, preset_name):
+        if preset_name == "Custom":
+            self.update_host_ai_controls_state()
+            return
+        host = self.get_active_host_data_for_ui()
+        old_ai = self.ensure_host_ai(host)
+        new_ai = self.make_host_ai(preset_name)
+        if old_ai == new_ai:
+            return
+        if 0 <= self.current_host_index < len(self.host_stations):
+            self.push_undo_snapshot()
+            host['ai'] = new_ai
+            self.current_host_data['ai'] = copy.deepcopy(new_ai)
+            self.dirty = True
+            self.refresh_host_list(redraw=False)
+        else:
+            self.current_host_data['ai'] = new_ai
+        self.update_host_ai_controls_state()
+
+    def open_host_ai_settings(self):
+        host = self.get_active_host_data_for_ui()
+        if 0 <= self.current_host_index < len(self.host_stations) and self.is_host_player_export_slot(host):
+            return
+        ai = copy.deepcopy(self.ensure_host_ai(host))
+
+        win = tk.Toplevel(self.root)
+        win.title("Advanced AI Settings")
+        win.configure(bg="#222")
+        win.resizable(False, False)
+        win.transient(self.root)
+
+        body = tk.Frame(win, bg="#222", padx=14, pady=12)
+        body.pack(fill=tk.BOTH, expand=True)
+        tk.Label(body, text="Delay values are milliseconds", bg="#222", fg="#AAAAAA", font=("Arial", 8)).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 8))
+        tk.Label(body, text="Task", bg="#222", fg="white", font=("Arial", 9, "bold")).grid(row=1, column=0, sticky="w")
+        tk.Label(body, text="Budget", bg="#222", fg="white", font=("Arial", 9, "bold")).grid(row=1, column=1, padx=8)
+        tk.Label(body, text="Delay", bg="#222", fg="white", font=("Arial", 9, "bold")).grid(row=1, column=2, padx=8)
+
+        rows = [
+            ("con", "Construction"),
+            ("def", "Defense"),
+            ("rec", "Recon"),
+            ("rob", "Robots"),
+            ("pow", "Power"),
+            ("rad", "Radar"),
+            ("saf", "Safety"),
+            ("cpl", "Capture"),
+        ]
+        budget_entries = {}
+        delay_entries = {}
+        for row_idx, (prefix, label) in enumerate(rows, start=2):
+            budget_key = f"{prefix}_budget"
+            delay_key = f"{prefix}_delay"
+            tk.Label(body, text=label, bg="#222", fg="#DDDDDD").grid(row=row_idx, column=0, sticky="e", padx=(0, 8), pady=2)
+            budget_entry = tk.Spinbox(body, from_=0, to=100, width=6)
+            budget_entry.delete(0, tk.END)
+            budget_entry.insert(0, str(ai[budget_key]))
+            budget_entry.grid(row=row_idx, column=1, padx=8, pady=2)
+            delay_entry = tk.Entry(body, width=10)
+            delay_entry.insert(0, str(ai[delay_key]))
+            delay_entry.grid(row=row_idx, column=2, padx=8, pady=2)
+            budget_entries[budget_key] = budget_entry
+            delay_entries[delay_key] = delay_entry
+
+        buttons = tk.Frame(body, bg="#222")
+        buttons.grid(row=11, column=0, columnspan=3, sticky="e", pady=(12, 0))
+
+        def close_dialog():
+            try:
+                win.grab_release()
+            except:
+                pass
+            win.destroy()
+
+        def confirm():
+            new_ai = {}
+            try:
+                for key, entry in budget_entries.items():
+                    value = int(entry.get())
+                    if not 0 <= value <= 100:
+                        raise ValueError
+                    new_ai[key] = value
+                for key, entry in delay_entries.items():
+                    value = int(entry.get())
+                    if value < 0:
+                        raise ValueError
+                    new_ai[key] = value
+            except:
+                messagebox.showwarning("Invalid AI Settings", "Budgets must be 0-100. Delays must be integer milliseconds >= 0.", parent=win)
+                return
+
+            old_ai = self.ensure_host_ai(host)
+            if all(old_ai[field] == new_ai[field] for field in HOST_AI_FIELDS):
+                close_dialog()
+                return
+            new_ai["preset"] = "Custom"
+            if old_ai != new_ai:
+                if 0 <= self.current_host_index < len(self.host_stations):
+                    self.push_undo_snapshot()
+                    host['ai'] = new_ai
+                    self.current_host_data['ai'] = copy.deepcopy(new_ai)
+                    self.dirty = True
+                    self.refresh_host_list(redraw=False)
+                else:
+                    self.current_host_data['ai'] = new_ai
+                self.update_host_ai_controls_state()
+            close_dialog()
+
+        tk.Button(buttons, text="Cancel", command=close_dialog, bg="#444", fg="white", width=10).pack(side=tk.RIGHT, padx=(8, 0))
+        tk.Button(buttons, text="OK", command=confirm, bg="#008800", fg="white", width=10).pack(side=tk.RIGHT)
+        win.protocol("WM_DELETE_WINDOW", close_dialog)
+        self.center_modal_dialog(win, 360, 360)
+        win.grab_set()
+        win.focus_set()
 
     def build_host_ui(self):
         p = self.panels['HOST']
@@ -1503,6 +1693,7 @@ class UIMixin:
         source_host = self.current_host_data
         if 0 <= self.current_host_index < len(self.host_stations):
             source_host = self.host_stations[self.current_host_index]
+        self.ensure_host_defaults(source_host)
 
         tk.Label(p, text="HOST STATION PLACER", bg="#FFD700", fg="black", font=("bold", 12)).pack(fill=tk.X, pady=(10, 6))
 
@@ -1523,6 +1714,7 @@ class UIMixin:
                     self.push_undo_snapshot()
                     self.host_stations[self.current_host_index]['owner'] = f
                     self.refresh_host_list(redraw=False)
+                    self.update_host_ai_controls_state()
                     self.redraw_cells(cell)
             else:
                 self.current_host_data['owner'] = f
@@ -1541,6 +1733,7 @@ class UIMixin:
                 self.player_owner = new_owner
                 self.dirty = True
                 self.refresh_host_list(redraw=False)
+                self.update_host_ai_controls_state()
             else:
                 self.player_owner = new_owner
             if hasattr(self, "btn_player_owner") and self.btn_player_owner.winfo_exists():
@@ -1588,29 +1781,53 @@ class UIMixin:
         self.e_host_y = tk.Entry(f_stats, width=10)
         self.e_host_y.grid(row=1, column=1, pady=(4, 0), sticky="w")
         self.e_host_y.insert(0, self.format_host_altitude_value(source_host.get('pos_y', DEFAULT_HOST_POS_Y)))
-        tk.Label(f_stats, text="-300 Default", fg="#888", bg="#1a1a1a", font=("Arial", 8)).grid(row=1, column=2, padx=(8, 0), pady=(4, 0), sticky="w")
+
+        tk.Label(f_stats, text="Reload Const:", fg="white", bg="#1a1a1a", width=11, anchor="e").grid(row=2, column=0, padx=(0, 6), pady=(4, 0), sticky="e")
+        self.e_host_reload = tk.Entry(f_stats, width=10)
+        self.e_host_reload.grid(row=2, column=1, pady=(4, 0), sticky="w")
+        self.e_host_reload.insert(0, str(source_host.get('reload_const', DEFAULT_HOST_RELOAD_CONST)))
+
+        tk.Label(f_stats, text="View Angle:", fg="white", bg="#1a1a1a", width=11, anchor="e").grid(row=3, column=0, padx=(0, 6), pady=(4, 0), sticky="e")
+        self.e_host_viewangle = tk.Entry(f_stats, width=10)
+        self.e_host_viewangle.grid(row=3, column=1, pady=(4, 0), sticky="w")
+        self.e_host_viewangle.insert(0, str(source_host.get('viewangle', DEFAULT_HOST_VIEWANGLE)))
 
         def upd_host_stats(ev=None):
             try:
                 new_energy = int(self.e_host_en.get())
-                new_pos_y = self.parse_host_altitude_value(self.e_host_y.get())
+                new_pos_y = int(self.e_host_y.get())
+                new_reload_const = int(self.e_host_reload.get())
+                new_viewangle = int(float(self.e_host_viewangle.get()))
+                if new_reload_const < 0:
+                    return
             except:
                 return
             if self.current_host_index != -1 and self.current_host_index < len(self.host_stations):
                 cell = self.get_host_cell(self.current_host_index)
                 curr = self.host_stations[self.current_host_index]
-                if curr['energy'] != new_energy or curr['pos_y'] != new_pos_y:
+                if (
+                    curr['energy'] != new_energy or
+                    curr['pos_y'] != new_pos_y or
+                    curr.get('reload_const', DEFAULT_HOST_RELOAD_CONST) != new_reload_const or
+                    curr.get('viewangle', DEFAULT_HOST_VIEWANGLE) != new_viewangle
+                ):
                     self.push_undo_snapshot()
                     curr['energy'] = new_energy
                     curr['pos_y'] = new_pos_y
+                    curr['reload_const'] = new_reload_const
+                    curr['viewangle'] = new_viewangle
                     self.refresh_host_list(redraw=False)
                     self.redraw_cells(cell)
             else:
                 self.current_host_data['energy'] = new_energy
                 self.current_host_data['pos_y'] = new_pos_y
+                self.current_host_data['reload_const'] = new_reload_const
+                self.current_host_data['viewangle'] = new_viewangle
             self.update_host_energy_controls(new_energy)
         self.e_host_en.bind("<KeyRelease>", upd_host_stats)
         self.e_host_y.bind("<KeyRelease>", upd_host_stats)
+        self.e_host_reload.bind("<KeyRelease>", upd_host_stats)
+        self.e_host_viewangle.bind("<KeyRelease>", upd_host_stats)
 
         def on_energy_preset_select(event=None):
             preset_energy = self.parse_host_energy_preset_value(self.cb_host_energy_preset.get())
@@ -1623,7 +1840,36 @@ class UIMixin:
         self.cb_host_energy_preset.bind("<<ComboboxSelected>>", on_energy_preset_select)
         self.update_host_energy_controls(source_host['energy'])
 
-        f_opt = tk.Frame(editor, bg="#1a1a1a"); f_opt.pack(fill=tk.X, pady=(5, 2))
+        f_ai = tk.Frame(editor, bg="#1a1a1a"); f_ai.pack(fill=tk.X, pady=(3, 0))
+        tk.Label(f_ai, text="AI Preset:", fg="white", bg="#1a1a1a", width=11, anchor="e").grid(row=0, column=0, padx=(0, 6), sticky="e")
+        ai_values = list(getattr(self, "host_ai_preset_names", [DEFAULT_HOST_AI_PRESET]))
+        if "Custom" not in ai_values:
+            ai_values.append("Custom")
+        self.cb_host_ai_preset = ttk.Combobox(f_ai, values=ai_values, state="readonly", width=18)
+        self.cb_host_ai_preset.grid(row=0, column=1, sticky="w")
+        self.cb_host_ai_preset.bind("<<ComboboxSelected>>", lambda e: self.apply_host_ai_preset(self.cb_host_ai_preset.get()))
+        self.btn_host_ai_advanced = tk.Button(
+            f_ai,
+            text="Advanced AI Settings",
+            command=self.open_host_ai_settings,
+            bg="#333",
+            fg="white",
+            width=20
+        )
+        self.btn_host_ai_advanced.grid(row=0, column=2, padx=(8, 0), sticky="w")
+        self.lbl_host_ai_description = tk.Label(
+            f_ai,
+            text="",
+            fg="#A7DDE8",
+            bg="#1a1a1a",
+            font=("Arial", 8, "italic"),
+            wraplength=390,
+            justify=tk.LEFT
+        )
+        self.lbl_host_ai_description.grid(row=1, column=1, columnspan=2, sticky="w", pady=(2, 0))
+        self.update_host_ai_controls_state()
+
+        f_opt = tk.Frame(editor, bg="#1a1a1a"); f_opt.pack(fill=tk.X, pady=(0, 1))
         self.var_host_hid = tk.BooleanVar(value=source_host.get('hidden', False))
         def tog_host_hid():
             val = self.var_host_hid.get()
@@ -1642,9 +1888,13 @@ class UIMixin:
             veh, custom_name = self.parse_definition_entry('host', self.cb_host.get(), 56, "Custom_Host")
             try:
                 energy = int(self.e_host_en.get())
-                pos_y = self.parse_host_altitude_value(self.e_host_y.get())
+                pos_y = int(self.e_host_y.get())
+                reload_const = int(self.e_host_reload.get())
+                viewangle = int(float(self.e_host_viewangle.get()))
+                if reload_const < 0:
+                    raise ValueError
             except:
-                messagebox.showwarning("Invalid Host", "Energy must be a number. Altitude must be Default or a number.")
+                messagebox.showwarning("Invalid Host", "Energy, Altitude, Reload Const and View Angle must be numbers.")
                 return
             self.push_undo_snapshot()
             self.host_stations.append({
@@ -1652,8 +1902,11 @@ class UIMixin:
                 'veh': veh,
                 'energy': energy,
                 'pos_y': pos_y,
+                'reload_const': reload_const,
+                'viewangle': viewangle,
                 'custom_name': custom_name,
                 'hidden': self.var_host_hid.get(),
+                'ai': copy.deepcopy(self.ensure_host_ai(self.get_active_host_data_for_ui())),
                 'x': -1,
                 'y': -1
             })
@@ -1664,10 +1917,11 @@ class UIMixin:
             self.dirty = True
 
         f_actions = tk.Frame(editor, bg="#1a1a1a")
-        f_actions.pack(anchor=tk.CENTER, pady=(6, 8))
+        f_actions.pack(anchor=tk.CENTER, pady=(3, 8))
         tk.Button(f_actions, text="ADD TO LIST", command=add_host_to_list, bg="#FFD700", fg="black", font=("Arial", 9, "bold"), width=13).pack(side=tk.LEFT, padx=(0, 5))
         tk.Button(f_actions, text="DESELECT", command=self.deselect_host, bg="#333", fg="white", font=("Arial", 9, "bold"), width=10).pack(side=tk.LEFT, padx=(0, 5))
-        tk.Button(f_actions, text="DELETE", command=self.delete_selected_host, bg="#880000", fg="white", font=("Arial", 9, "bold"), width=8).pack(side=tk.LEFT)
+        tk.Button(f_actions, text="DELETE", command=self.delete_selected_host, bg="#880000", fg="white", font=("Arial", 9, "bold"), width=8).pack(side=tk.LEFT, padx=(0, 5))
+        tk.Button(f_actions, text="DELETE ALL", command=self.delete_all_hosts, bg="#AA0000", fg="white", font=("Arial", 9, "bold"), width=10).pack(side=tk.LEFT)
 
         f_player = tk.Frame(editor, bg="#1a1a1a"); f_player.pack(fill=tk.X, pady=(2, 5))
         tk.Label(f_player, text="Player faction:", fg="white", bg="#1a1a1a", width=11, anchor="e").pack(side=tk.LEFT, padx=(0, 6))
@@ -1682,7 +1936,7 @@ class UIMixin:
         f_list = tk.Frame(p, bg="#1a1a1a")
         f_list.pack(fill=tk.BOTH, expand=True, padx=12, pady=(6, 8))
 
-        self.lb_hosts = tk.Listbox(f_list, bg="#222", fg="white", height=8, selectbackground="#008888", selectforeground="white")
+        self.lb_hosts = tk.Listbox(f_list, bg="#222", fg="white", height=8, selectbackground=LISTBOX_SELECTION_BG, selectforeground=LISTBOX_SELECTION_FG, exportselection=False)
         self.lb_hosts.pack(fill=tk.BOTH, expand=True)
         self.lb_hosts.bind('<<ListboxSelect>>', self.on_host_select)
         self.refresh_host_list()
@@ -1699,12 +1953,23 @@ class UIMixin:
                 pass
         if hasattr(self, 'e_host_y') and self.e_host_y.winfo_exists():
             try:
-                self.current_host_data['pos_y'] = self.parse_host_altitude_value(self.e_host_y.get())
+                self.current_host_data['pos_y'] = int(self.e_host_y.get())
+            except:
+                pass
+        if hasattr(self, 'e_host_reload') and self.e_host_reload.winfo_exists():
+            try:
+                self.current_host_data['reload_const'] = max(0, int(self.e_host_reload.get()))
+            except:
+                pass
+        if hasattr(self, 'e_host_viewangle') and self.e_host_viewangle.winfo_exists():
+            try:
+                self.current_host_data['viewangle'] = int(float(self.e_host_viewangle.get()))
             except:
                 pass
         self.current_host_data['owner'] = getattr(self, '_host_control_owner', self.current_host_data.get('owner', 1))
         if hasattr(self, 'var_host_hid'):
             self.current_host_data['hidden'] = self.var_host_hid.get()
+        self.current_host_data['ai'] = copy.deepcopy(self.ensure_host_ai(self.current_host_data))
 
     def deselect_host(self):
         previous_cell = self.get_host_cell(self.current_host_index)
@@ -1717,6 +1982,7 @@ class UIMixin:
                 self.lb_hosts.selection_clear(0, tk.END)
             finally:
                 self._syncing_host_selection = False
+        self.update_host_ai_controls_state()
         self.redraw_cells(previous_cell)
 
     def select_host_index(self, idx, redraw=True):
@@ -1731,8 +1997,11 @@ class UIMixin:
             'veh': h['veh'],
             'energy': h['energy'],
             'pos_y': h.get('pos_y', DEFAULT_HOST_POS_Y),
+            'reload_const': h.get('reload_const', DEFAULT_HOST_RELOAD_CONST),
+            'viewangle': h.get('viewangle', DEFAULT_HOST_VIEWANGLE),
             'custom_name': h.get('custom_name'),
-            'hidden': h.get('hidden', False)
+            'hidden': h.get('hidden', False),
+            'ai': copy.deepcopy(self.ensure_host_ai(h))
         }
         if hasattr(self, 'lb_hosts') and self.lb_hosts.winfo_exists():
             self._syncing_host_selection = True
@@ -1749,6 +2018,10 @@ class UIMixin:
             self.e_host_en.delete(0, tk.END); self.e_host_en.insert(0, str(h['energy']))
         if hasattr(self, 'e_host_y') and self.e_host_y.winfo_exists():
             self.e_host_y.delete(0, tk.END); self.e_host_y.insert(0, self.format_host_altitude_value(h.get('pos_y', DEFAULT_HOST_POS_Y)))
+        if hasattr(self, 'e_host_reload') and self.e_host_reload.winfo_exists():
+            self.e_host_reload.delete(0, tk.END); self.e_host_reload.insert(0, str(h.get('reload_const', DEFAULT_HOST_RELOAD_CONST)))
+        if hasattr(self, 'e_host_viewangle') and self.e_host_viewangle.winfo_exists():
+            self.e_host_viewangle.delete(0, tk.END); self.e_host_viewangle.insert(0, str(h.get('viewangle', DEFAULT_HOST_VIEWANGLE)))
         if hasattr(self, 'cb_host') and self.cb_host.winfo_exists():
             vname = h.get('custom_name') if h.get('custom_name') else self.defs['host'].get(h['veh'], "Unknown")
             self.cb_host.set(f"{h['veh']} - {vname}")
@@ -1757,6 +2030,7 @@ class UIMixin:
             f = h['owner']
             self.btn_host_fac.config(text=self.format_player_owner_value(f), fg=FACTIONS[f][1] if FACTIONS[f][1] else "white")
         self.update_host_energy_controls(h['energy'])
+        self.update_host_ai_controls_state()
         if redraw:
             self.redraw_cells(previous_cell, selected_cell)
 
@@ -1787,33 +2061,59 @@ class UIMixin:
         self.redraw_cells(cell)
         self.dirty = True
 
+    def delete_all_hosts(self):
+        if not self.host_stations:
+            return
+        if not messagebox.askyesno("Delete All Host Stations", "Delete all host stations?"):
+            return
+        self.push_undo_snapshot()
+        self.host_stations.clear()
+        self.current_host_index = -1
+        self._drag_host_idx = -1
+        self.invalidate_render_indexes()
+        self.refresh_host_list(redraw=False)
+        self.update_host_ai_controls_state()
+        self.draw_grid()
+        self.dirty = True
+
     def refresh_host_list(self, redraw=True):
         if not hasattr(self, 'lb_hosts') or not self.lb_hosts.winfo_exists(): return
-        self.lb_hosts.delete(0, tk.END)
-        player_index = -1
-        for idx, host in enumerate(self.host_stations):
-            if self.map_cell_is_valid(host) and host.get('owner') == getattr(self, 'player_owner', 1):
-                player_index = idx
-                break
-        for i, h in enumerate(self.host_stations):
-            vname = h.get('custom_name') or self.defs['host'].get(h['veh'], "Unknown")
-            faction_name = self.get_faction_display_name(h['owner'])
-            hidden_tag = " (Hidden)" if h.get('hidden', False) else ""
-            player_tag = " [PLAYER]" if i == player_index else ""
-            pos_tag = f"@ {h['x']},{h['y']}" if self.map_cell_is_valid(h) else "[UNPLACED]"
-            txt = (
-                f"{i}:{player_tag} {pos_tag} {faction_name} ID:{h['owner']} | "
-                f"{vname} ID:{h['veh']} | HP:{h['energy']}"
-                f"{hidden_tag}"
-            )
-            self.lb_hosts.insert(tk.END, txt)
-            color = FACTION_TEXT_COLORS.get(h['owner'], "#FFFFFF")
-            self.lb_hosts.itemconfig(i, {'fg': color})
-            if i == self.current_host_index:
-                self.lb_hosts.selection_set(i)
-                self.lb_hosts.activate(i)
+        self._syncing_host_selection = True
+        try:
+            self.lb_hosts.delete(0, tk.END)
+            for i, h in enumerate(self.host_stations):
+                self.ensure_host_defaults(h)
+                vname = h.get('custom_name') or self.defs['host'].get(h['veh'], "Unknown")
+                faction_name = self.get_faction_display_name(h['owner'])
+                export_index = self.get_host_export_index(h, placed_only=True)
+                tags = []
+                if export_index == 0:
+                    tags.append("[PLAYER]")
+                if not self.map_cell_is_valid(h):
+                    tags.append("[UNPLACED]")
+                prefix = " ".join(tags)
+                if prefix:
+                    prefix += " "
+
+                txt_parts = [f"{prefix}{faction_name}", vname, f"{h['energy']} HP"]
+                if h.get('hidden', False):
+                    txt_parts.append("Hidden")
+                if export_index != 0:
+                    preset_name = h['ai'].get('preset', DEFAULT_HOST_AI_PRESET)
+                    txt_parts.append("Custom AI" if preset_name == "Custom" else preset_name)
+                txt = " | ".join(txt_parts)
+                self.lb_hosts.insert(tk.END, txt)
+                color = FACTION_TEXT_COLORS.get(h['owner'], "#FFFFFF")
+                self.lb_hosts.itemconfig(i, {'fg': color})
+                if i == self.current_host_index:
+                    self.lb_hosts.selection_set(i)
+                    self.lb_hosts.activate(i)
+                    self.lb_hosts.see(i)
+        finally:
+            self._syncing_host_selection = False
         if redraw:
             self.draw_grid()
+        self.update_host_ai_controls_state()
 
     def build_tech_ui(self):
         p = self.panels['TECH']
@@ -1931,15 +2231,10 @@ class UIMixin:
         width = self.cv_tech.winfo_width()
         fid = self.curr_tech_faction
 
-        if fid == 1: 
-            active_bg = "#004444"
-            active_outline = "#00FFFF"
-            active_text = "#FFFFFF"
-        else: 
-            base_col = FACTIONS[fid][1] 
-            active_bg = base_col 
-            active_outline = "white"
-            active_text = "black" if fid in [2, 3, 4] else "white"
+        faction_color = FACTIONS[fid][1] or "#FFFFFF"
+        active_bg = faction_color
+        active_outline = SELECTION_COLOR
+        active_text = "black" if fid in [2, 3, 4] else "white"
 
         items = self.get_tech_list_items()
         active_veh = self.tech[fid]['veh']; active_blg = self.tech[fid]['blg']
@@ -1947,23 +2242,17 @@ class UIMixin:
         for i, (cat, uid, name) in enumerate(items):
             x, y = 10, i * TECH_ITEM_H + 5
             is_active = uid in (active_veh if cat=='veh' else active_blg)
-            is_custom = uid in self.custom_tech_names
 
             if is_active:
-                if is_custom: 
-                    bg_color = "#440000"
-                    border_color = "#FF0000"
-                    text_color = "#FFCCCC"
-                else:
-                    bg_color = active_bg
-                    border_color = active_outline
-                    text_color = active_text
+                bg_color = active_bg
+                border_color = active_outline
+                text_color = active_text
             else:
                 bg_color = "#333333"
                 border_color = "#555555"
                 text_color = "#BBBBBB"
 
-            line_w = 2 if is_active else 1
+            line_w = 3 if is_active else 1
             item_w = max(TECH_ITEM_W, width - 20)
             tag = f"item_{cat}_{uid}"
             self.cv_tech.create_rectangle(x, y, x + item_w, y + TECH_ITEM_H - 4, fill=bg_color, outline=border_color, width=line_w, tags=tag)
