@@ -1,6 +1,6 @@
 # Sektor 2 - Urban Assault Map Editor
 
-Sektor 2 is a fan-made map editor for Microsoft Urban Assault (1998), designed to simplify the creation and modification of custom LDF levels for UA / OpenUA / UA Source.
+Sektor 2 is a map editor for Microsoft Urban Assault (1998), designed to simplify the creation and modification of custom LDF levels for UA / OpenUA / UA Source.
 
 The editor converts user-created map data into Urban Assault-compatible level files through a visual interface, making map creation significantly easier compared to manual text editing.
 
@@ -8,12 +8,9 @@ SEKTOR was originally developed and tested on Linux, but is now fully functional
 
 This project is part of ongoing preservation efforts surrounding Urban Assault and OpenUA.
 
-## Running from source and release notes
+## Running:
 
-- Running from source requires Python 3 and Pillow.
-- Use the Windows `.bat` launcher or the Linux `.sh` launcher when available.
-- A full release package must include the set graphics folders (`set1`, `set2`, etc.).
+- Use the Windows .exe or the Linux `.sh` launcher.
 - Always back up your `.LDF` files before editing maps.
 
-<img width="2559" height="1522" alt="Sektor2 Relase" src="https://github.com/user-attachments/assets/95037ca1-cd75-4f1e-9a0d-2a82df893d9c" />
-<img width="2559" height="1522" alt="Sektor2 Relase (2)" src="https://github.com/user-attachments/assets/e3489149-fc06-4338-aefb-c7da2efe7658" />
+<img width="2559" height="1527" alt="sektor nuovo" src="https://github.com/user-attachments/assets/15edf427-6459-4a3c-9368-d0d506985ba1" />
