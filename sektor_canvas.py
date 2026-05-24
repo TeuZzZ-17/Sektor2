@@ -3,8 +3,6 @@ import tkinter.font as tkfont
 from tkinter import filedialog, messagebox, ttk
 from PIL import Image, ImageTk, ImageDraw
 import os
-import copy
-import re
 import platform
 import subprocess
 import time
@@ -79,6 +77,11 @@ class CanvasMixin:
         (35, 36, 37): ("f5", "23"),
         (68, 69, 70): ("eb", "44"),
     }
+    ITEM_KEY_AUTO_VISUALS = {
+        "NO_ROAD": "f3",
+        "WITH_ROADS": "f4",
+    }
+    DEFAULT_ITEM_KEY_AUTO_VISUAL = "f3"
 
     def get_special_cell(self, data):
         if not data or data.get('x', -1) == -1 or data.get('y', -1) == -1:
@@ -106,36 +109,93 @@ class CanvasMixin:
             str(self.grids['blg'][y][x]).lower() == blg.lower()
         )
 
-    def cell_is_empty_visual(self, cell):
+    def get_cell_visual(self, cell):
         if not cell:
-            return False
+            return None
         x, y = cell
         if not (0 <= x < self.mw and 0 <= y < self.mh):
-            return False
+            return None
+        return (str(self.grids['type'][y][x]), str(self.grids['blg'][y][x]))
+
+    def same_visual(self, visual_a, visual_b):
+        if not visual_a or not visual_b:
+            return not visual_a and not visual_b
         return (
-            str(self.grids['type'][y][x]).lower() == "00" and
-            str(self.grids['blg'][y][x]).lower() == "00"
+            str(visual_a[0]).lower() == str(visual_b[0]).lower() and
+            str(visual_a[1]).lower() == str(visual_b[1]).lower()
         )
 
-    def clear_auto_visual_if_matches(self, cell, visual):
+    def cell_is_current_object_auto_visual(self, cell, data):
+        if not cell or not data:
+            return False
+        applied_cell = data.get('_auto_visual_cell')
+        applied_visual = data.get('_auto_visual_applied')
+        return applied_cell == cell and self.cell_matches_auto_visual(cell, applied_visual)
+
+    def cell_has_manual_building_for_auto_visual(self, cell, data=None):
+        visual = self.get_cell_visual(cell)
+        if not visual:
+            return True
+        _typ, blg = visual
+        if blg.lower() == "00":
+            return False
+        return not self.cell_is_current_object_auto_visual(cell, data)
+
+    def forget_auto_visual_metadata(self, data):
+        if not data:
+            return
+        data.pop('_auto_visual_cell', None)
+        data.pop('_auto_visual_before', None)
+        data.pop('_auto_visual_applied', None)
+
+    def restore_auto_visual_if_matches(self, data, fallback_cell=None, fallback_visual=None):
+        cell = data.get('_auto_visual_cell') if data else None
+        visual = data.get('_auto_visual_applied') if data else None
+        before = data.get('_auto_visual_before') if data else None
+
+        if not cell:
+            cell = fallback_cell
+        if not visual:
+            visual = fallback_visual
+
+        changed = False
+        if self.cell_matches_auto_visual(cell, visual):
+            x, y = cell
+            restore_typ, restore_blg = before if before else ("00", "00")
+            self.grids['type'][y][x] = restore_typ
+            self.grids['blg'][y][x] = restore_blg
+            changed = True
+
+        self.forget_auto_visual_metadata(data)
+        return changed
+
+    def clear_auto_visual_if_matches(self, cell, visual, before=None):
         if not self.cell_matches_auto_visual(cell, visual):
             return False
         x, y = cell
-        self.grids['type'][y][x] = "00"
-        self.grids['blg'][y][x] = "00"
+        restore_typ, restore_blg = before if before else ("00", "00")
+        self.grids['type'][y][x] = restore_typ
+        self.grids['blg'][y][x] = restore_blg
         return True
 
-    def set_auto_visual_if_safe(self, cell, new_visual, old_visual=None):
+    def set_auto_visual_if_safe(self, cell, new_visual, old_visual=None, data=None):
         if not cell or not new_visual:
             return False
+        if self.cell_has_manual_building_for_auto_visual(cell, data):
+            return False
+
         if self.cell_matches_auto_visual(cell, new_visual):
             return False
-        if not self.cell_is_empty_visual(cell) and not self.cell_matches_auto_visual(cell, old_visual):
-            return False
+
+        before = self.get_cell_visual(cell)
         x, y = cell
         typ, blg = new_visual
         self.grids['type'][y][x] = typ
         self.grids['blg'][y][x] = blg
+        if data is not None:
+            data['_auto_visual_cell'] = cell
+            data['_auto_visual_before'] = before
+            data['_auto_visual_applied'] = new_visual
         return True
 
     def sync_special_auto_visual(self, mode, data, old_cell=None, old_visual=None):
@@ -143,13 +203,16 @@ class CanvasMixin:
         new_visual = self.get_special_auto_visual(mode, data)
         changed = False
 
-        if old_cell and old_cell != new_cell:
-            changed = self.clear_auto_visual_if_matches(old_cell, old_visual) or changed
-        elif old_cell and old_cell == new_cell and old_visual and not new_visual:
-            changed = self.clear_auto_visual_if_matches(old_cell, old_visual) or changed
+        visual_changed = not self.same_visual(old_visual, new_visual)
+        if old_cell and (old_cell != new_cell or visual_changed):
+            changed = self.restore_auto_visual_if_matches(
+                data,
+                fallback_cell=old_cell,
+                fallback_visual=old_visual
+            ) or changed
 
         if new_cell:
-            changed = self.set_auto_visual_if_safe(new_cell, new_visual, old_visual) or changed
+            changed = self.set_auto_visual_if_safe(new_cell, new_visual, old_visual, data) or changed
 
         if changed:
             self.dirty = True
@@ -158,10 +221,127 @@ class CanvasMixin:
     def clear_special_auto_visual(self, mode, data):
         cell = self.get_special_cell(data)
         visual = self.get_special_auto_visual(mode, data)
-        changed = self.clear_auto_visual_if_matches(cell, visual)
+        changed = self.restore_auto_visual_if_matches(
+            data,
+            fallback_cell=cell,
+            fallback_visual=visual
+        )
         if changed:
             self.dirty = True
         return changed
+
+    def get_item_key_visual_typ(self, data):
+        if not data:
+            return self.DEFAULT_ITEM_KEY_AUTO_VISUAL
+        stored_visual = data.get('_key_visual_typ')
+        if stored_visual is None:
+            for cell in data.get('keys', []):
+                cell_typ = self.get_cell_typ(cell)
+                if cell_typ and str(cell_typ).lower() == self.ITEM_KEY_AUTO_VISUALS["WITH_ROADS"]:
+                    return self.ITEM_KEY_AUTO_VISUALS["WITH_ROADS"]
+            return self.DEFAULT_ITEM_KEY_AUTO_VISUAL
+        visual = str(stored_visual).lower()
+        if visual not in self.ITEM_KEY_AUTO_VISUALS.values():
+            return self.DEFAULT_ITEM_KEY_AUTO_VISUAL
+        return visual
+
+    def get_cell_typ(self, cell):
+        if not cell:
+            return None
+        x, y = cell
+        if not (0 <= x < self.mw and 0 <= y < self.mh):
+            return None
+        return str(self.grids['type'][y][x])
+
+    def get_item_key_visual_meta(self, data, cell):
+        visuals = data.get('_key_visuals') if data else None
+        if not visuals:
+            return None
+        return visuals.get(cell)
+
+    def apply_item_key_visual(self, data, cell, visual_typ=None):
+        if not data or not cell:
+            return False
+        visual_typ = str(visual_typ or self.get_item_key_visual_typ(data)).lower()
+        if visual_typ not in self.ITEM_KEY_AUTO_VISUALS.values():
+            return False
+        old_typ = self.get_cell_typ(cell)
+        if old_typ is None:
+            return False
+
+        meta = self.get_item_key_visual_meta(data, cell)
+        if str(old_typ).lower() == visual_typ:
+            return False
+
+        x, y = cell
+        self.grids['type'][y][x] = visual_typ
+        visuals = data.setdefault('_key_visuals', {})
+        if meta:
+            meta['applied'] = visual_typ
+        else:
+            visuals[cell] = {'before': old_typ, 'applied': visual_typ}
+        return True
+
+    def restore_item_key_visual_if_matches(self, data, cell):
+        if not data or not cell:
+            return False
+        visuals = data.get('_key_visuals')
+        if not visuals:
+            return False
+        meta = visuals.pop(cell, None)
+        if not meta:
+            return False
+        current_typ = self.get_cell_typ(cell)
+        if current_typ is None:
+            return False
+        if str(current_typ).lower() != str(meta.get('applied', '')).lower():
+            return False
+        x, y = cell
+        self.grids['type'][y][x] = meta.get('before', "00")
+        return True
+
+    def clear_all_item_key_visuals(self, data):
+        changed = False
+        for cell in list((data.get('_key_visuals') or {}).keys()):
+            changed = self.restore_item_key_visual_if_matches(data, cell) or changed
+        return changed
+
+    def sync_item_key_visual_preset(self, data, old_visual_typ, new_visual_typ):
+        if not data:
+            return []
+        changed_cells = []
+        old_visual_typ = str(old_visual_typ or self.DEFAULT_ITEM_KEY_AUTO_VISUAL).lower()
+        new_visual_typ = str(new_visual_typ or self.DEFAULT_ITEM_KEY_AUTO_VISUAL).lower()
+        if old_visual_typ == new_visual_typ:
+            return changed_cells
+
+        for cell in list(data.get('keys', [])):
+            current_typ = self.get_cell_typ(cell)
+            if current_typ is None:
+                continue
+            current_typ_lower = str(current_typ).lower()
+            meta = self.get_item_key_visual_meta(data, cell)
+            if meta:
+                can_update = current_typ_lower == str(meta.get('applied', '')).lower()
+            else:
+                can_update = (
+                    current_typ_lower == old_visual_typ or
+                    current_typ_lower in self.ITEM_KEY_AUTO_VISUALS.values()
+                )
+            if not can_update:
+                continue
+
+            x, y = cell
+            self.grids['type'][y][x] = new_visual_typ
+            visuals = data.setdefault('_key_visuals', {})
+            if meta:
+                meta['applied'] = new_visual_typ
+            else:
+                visuals[cell] = {'before': current_typ, 'applied': new_visual_typ}
+            changed_cells.append(cell)
+        if changed_cells:
+            self.dirty = True
+        return changed_cells
 
     def has_squad(self, cx, cy, exclude_index=None):
         for i, s in enumerate(self.squads):
@@ -439,12 +619,16 @@ class CanvasMixin:
         if index is None or index < 0 or index >= len(self.squads):
             return None
         squad = self.squads[index]
+        if squad['x'] == -1 or squad['y'] == -1:
+            return None
         return (squad['x'], squad['y'])
 
     def get_host_cell(self, index):
         if index is None or index < 0 or index >= len(self.host_stations):
             return None
         host = self.host_stations[index]
+        if host['x'] == -1 or host['y'] == -1:
+            return None
         return (host['x'], host['y'])
 
     def redraw_cells(self, *cells):
@@ -1044,7 +1228,7 @@ class CanvasMixin:
         if self.space_pan_active:
             return self.start_map_pan(event, source="space_left")
         self.update_hover_from_event(event)
-        if self.mode in ["TYPE", "OWN", "BLG", "HGT", "GATE", "ITEM", "GEM", "SQUAD", "HOST"] and not self._map_edit_snapshot_taken:
+        if self.mode in ["TYPE", "OWN", "BLG", "HGT", "GATE", "ITEM", "GEM"] and not self._map_edit_snapshot_taken:
             self.push_undo_snapshot()
             self._map_edit_snapshot_taken = True
         return self.on_click(event)
@@ -1127,7 +1311,12 @@ class CanvasMixin:
                             )
                             if not can_place:
                                 return
+                            if self.mode == "ITEM":
+                                self.restore_item_key_visual_if_matches(current_data, (old_x, old_y))
                             self._drag_key_list[self._drag_key_idx] = (cx, cy)
+                            if self.mode == "ITEM":
+                                self.apply_item_key_visual(current_data, (cx, cy))
+                                self.dirty = True
                             self.invalidate_render_indexes()
                             self.redraw_cells((old_x, old_y), (cx, cy))
                     return
@@ -1166,6 +1355,9 @@ class CanvasMixin:
                                 messagebox.showwarning("Occupied", "Cannot place Key here!")
                             return
                         current_data['keys'].append((cx, cy))
+                        if self.mode == "ITEM":
+                            self.apply_item_key_visual(current_data, (cx, cy))
+                            self.dirty = True
                         self.invalidate_render_indexes()
                         self.redraw_cells((cx, cy))
                     return
@@ -1199,55 +1391,36 @@ class CanvasMixin:
                          if self.has_squad(cx, cy, exclude_index=idx): return
                          sq = self.squads[idx]; old_x, old_y = sq['x'], sq['y']
                          if old_x != cx or old_y != cy:
+                            if not self._map_edit_snapshot_taken:
+                                self.push_undo_snapshot()
+                                self._map_edit_snapshot_taken = True
                             sq['x'], sq['y'] = cx, cy
+                            self.dirty = True
                             self.invalidate_render_indexes()
                             self.redraw_cells((old_x, old_y), (cx, cy))
+                            self.refresh_squad_list(redraw=False)
                 return
 
             if str(e.type) == '4': # Click
-                clicked_squad_index = -1
-                for i, s in enumerate(self.squads):
-                    if s['x'] == cx and s['y'] == cy: clicked_squad_index = i; break
-
-                if clicked_squad_index != -1:
-                    previous_cell = self.get_squad_cell(self.current_squad_index)
-                    self.lb_squads.selection_clear(0, tk.END)
-                    self.lb_squads.selection_set(clicked_squad_index)
-                    self.lb_squads.activate(clicked_squad_index)
-                    self.lb_squads.see(clicked_squad_index)
-                    self.current_squad_index = clicked_squad_index
-                    self._drag_squad_idx = clicked_squad_index
-                    self.redraw_cells(previous_cell, (cx, cy))
+                idx = self.current_squad_index
+                if idx == -1 or idx >= len(self.squads):
+                    messagebox.showwarning("No Squad Selected", "Select a squad from the list, then click the map to place it.")
                     return
 
-                if self.has_squad(cx, cy):
+                if self.has_squad(cx, cy, exclude_index=idx):
                     messagebox.showwarning("Occupied", "Tile occupied!"); return
 
-                # CUSTOM ID/NAME PARSING (SQUAD)
-                combo_val = self.cb_veh.get().strip()
-                parsed_id = 1; parsed_name = None
-                
-                # Regex for "ID - Name" pattern
-                match = re.match(r'^(\d+)\s*-\s*(.*)$', combo_val)
-                if match:
-                    parsed_id = int(match.group(1))
-                    nm = match.group(2).strip()
-                    # If regex matched, we prioritize this name as custom if it exists
-                    if nm: parsed_name = nm
-                else:
-                    # Fallback for just an ID number
-                    try:
-                        parsed_id = int(combo_val)
-                        if parsed_id not in self.defs['veh']: parsed_name = "Custom_Unit"
-                    except: pass
-
-                self.current_squad_data['veh'] = parsed_id
-                self.current_squad_data['custom_name'] = parsed_name
-                new_sq = copy.deepcopy(self.current_squad_data)
-                new_sq['x'], new_sq['y'] = cx, cy
-                self.squads.append(new_sq)
+                sq = self.squads[idx]
+                old_x, old_y = sq['x'], sq['y']
+                if old_x != cx or old_y != cy:
+                    if not self._map_edit_snapshot_taken:
+                        self.push_undo_snapshot()
+                        self._map_edit_snapshot_taken = True
+                    sq['x'], sq['y'] = cx, cy
+                    self.dirty = True
                 self.invalidate_render_indexes()
-                self.redraw_cells((cx, cy))
+                self._drag_squad_idx = idx
+                self.redraw_cells((old_x, old_y), (cx, cy))
                 self.refresh_squad_list(redraw=False)
             return
 
@@ -1260,54 +1433,36 @@ class CanvasMixin:
                          if self.has_host(cx, cy, exclude_index=idx): return
                          hst = self.host_stations[idx]; old_x, old_y = hst['x'], hst['y']
                          if old_x != cx or old_y != cy:
+                            if not self._map_edit_snapshot_taken:
+                                self.push_undo_snapshot()
+                                self._map_edit_snapshot_taken = True
                             hst['x'], hst['y'] = cx, cy
+                            self.dirty = True
                             self.invalidate_render_indexes()
                             self.redraw_cells((old_x, old_y), (cx, cy))
+                            self.refresh_host_list(redraw=False)
                 return
 
             if str(e.type) == '4': # Click
-                clicked_host_index = -1
-                for i, h in enumerate(self.host_stations):
-                    if h['x'] == cx and h['y'] == cy: clicked_host_index = i; break
-
-                if clicked_host_index != -1:
-                    previous_cell = self.get_host_cell(self.current_host_index)
-                    self.lb_hosts.selection_clear(0, tk.END)
-                    self.lb_hosts.selection_set(clicked_host_index)
-                    self.lb_hosts.activate(clicked_host_index)
-                    self.lb_hosts.see(clicked_host_index)
-                    self.current_host_index = clicked_host_index
-                    self._drag_host_idx = clicked_host_index
-                    self.redraw_cells(previous_cell, (cx, cy))
+                idx = self.current_host_index
+                if idx == -1 or idx >= len(self.host_stations):
+                    messagebox.showwarning("No Host Selected", "Select a host station from the list, then click the map to place it.")
                     return
 
-                if self.has_host(cx, cy):
+                if self.has_host(cx, cy, exclude_index=idx):
                     messagebox.showwarning("Occupied", "Tile occupied!"); return
 
-                # CUSTOM ID/NAME PARSING (HOST)
-                combo_val = self.cb_host.get().strip()
-                parsed_id = 56; parsed_name = None
-                
-                # Regex for "ID - Name" pattern
-                match = re.match(r'^(\d+)\s*-\s*(.*)$', combo_val)
-                if match:
-                    parsed_id = int(match.group(1))
-                    nm = match.group(2).strip()
-                    if nm: parsed_name = nm
-                else:
-                    try:
-                        parsed_id = int(combo_val)
-                        if parsed_id not in self.defs['host']: parsed_name = "Custom_Host"
-                    except: pass
-
-                self.current_host_data['veh'] = parsed_id
-                self.current_host_data['custom_name'] = parsed_name
-                new_hst = copy.deepcopy(self.current_host_data)
-                new_hst['x'], new_hst['y'] = cx, cy
-
-                self.host_stations.append(new_hst)
+                hst = self.host_stations[idx]
+                old_x, old_y = hst['x'], hst['y']
+                if old_x != cx or old_y != cy:
+                    if not self._map_edit_snapshot_taken:
+                        self.push_undo_snapshot()
+                        self._map_edit_snapshot_taken = True
+                    hst['x'], hst['y'] = cx, cy
+                    self.dirty = True
                 self.invalidate_render_indexes()
-                self.redraw_cells((cx, cy))
+                self._drag_host_idx = idx
+                self.redraw_cells((old_x, old_y), (cx, cy))
                 self.refresh_host_list(redraw=False)
             return
 
@@ -1338,36 +1493,28 @@ class CanvasMixin:
                 self._map_right_edit_snapshot_taken = True
             self.dirty = True
 
-        # SQUAD REMOVAL
+        # SQUAD SELECTION
         if self.mode == "SQUAD":
-             previous_cell = self.get_squad_cell(self.current_squad_index)
-             self.lb_squads.selection_clear(0, tk.END); self.current_squad_index = -1
              for i in reversed(range(len(self.squads))):
-                    s = self.squads[i]
-                    if s['x'] == cx and s['y'] == cy:
-                        push_right_undo_once()
-                        self.squads.pop(i)
-                        self.invalidate_render_indexes()
-                        self.redraw_cells(previous_cell, (cx, cy))
-                        self.refresh_squad_list(redraw=False); break
-             else:
-                    self.redraw_cells(previous_cell)
+                 s = self.squads[i]
+                 if s['x'] == cx and s['y'] == cy:
+                     if i == self.current_squad_index:
+                         self.deselect_squad()
+                     else:
+                         self.select_squad_index(i)
+                     break
              return
 
-        # HOST REMOVAL
+        # HOST SELECTION
         if self.mode == "HOST":
-             previous_cell = self.get_host_cell(self.current_host_index)
-             self.lb_hosts.selection_clear(0, tk.END); self.current_host_index = -1
              for i in reversed(range(len(self.host_stations))):
-                    h = self.host_stations[i]
-                    if h['x'] == cx and h['y'] == cy:
-                        push_right_undo_once()
-                        self.host_stations.pop(i)
-                        self.invalidate_render_indexes()
-                        self.redraw_cells(previous_cell, (cx, cy))
-                        self.refresh_host_list(redraw=False); break
-             else:
-                    self.redraw_cells(previous_cell)
+                 h = self.host_stations[i]
+                 if h['x'] == cx and h['y'] == cy:
+                     if i == self.current_host_index:
+                         self.deselect_host()
+                     else:
+                         self.select_host_index(i)
+                     break
              return
 
         if self.mode == "TYPE":
@@ -1419,6 +1566,7 @@ class CanvasMixin:
                     self.redraw_cells((cx, cy)); return
                 if (cx, cy) in it['keys']:
                     push_right_undo_once()
+                    self.restore_item_key_visual_if_matches(it, (cx, cy))
                     it['keys'].remove((cx, cy))
                     self.invalidate_render_indexes()
                     self.redraw_cells((cx, cy)); return

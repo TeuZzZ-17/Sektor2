@@ -3,6 +3,7 @@ APP_NAME = "Sektor 2"
 
 DEFAULT_W, DEFAULT_H = 15, 15
 DEFAULT_HGT = 0x7F
+DEFAULT_HOST_POS_Y = -300
 MAX_SPECIAL_SLOTS = 10
 
 # Height Constraints (+/- 30 from 0x7F)

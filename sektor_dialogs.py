@@ -349,7 +349,7 @@ class DialogMixin:
         self._drag_host_idx = -1
 
         self.current_squad_data = {'owner': 1, 'veh': 1, 'num': 1, 'hidden': False, 'custom_name': None}
-        self.current_host_data = {'owner': 1, 'veh': 56, 'energy': 500000, 'pos_y': -330, 'custom_name': None, 'hidden': False}
+        self.current_host_data = {'owner': 1, 'veh': 56, 'energy': 500000, 'pos_y': DEFAULT_HOST_POS_Y, 'custom_name': None, 'hidden': False}
 
         self.reset_map(confirm=False, track_history=False)
         self.clear_history()

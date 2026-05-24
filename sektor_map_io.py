@@ -291,7 +291,7 @@ class MapIOMixin:
                     elif token_lower == 'begin_robo':
                         custom_name = host_comment_names[host_comment_idx] if host_comment_idx < len(host_comment_names) else None
                         host_comment_idx += 1
-                        current_host = {'owner':1, 'veh':56, 'energy':500000, 'pos_y':-330, 'custom_name':custom_name, 'x':-1, 'y':-1, 'hidden':False}
+                        current_host = {'owner':1, 'veh':56, 'energy':500000, 'pos_y':DEFAULT_HOST_POS_Y, 'custom_name':custom_name, 'x':-1, 'y':-1, 'hidden':False}
 
                     elif token_lower == 'begin_level': reading_level = True
                     elif token_lower == 'begin_mbmap': reading_mb = True
@@ -556,6 +556,18 @@ class MapIOMixin:
             return False
 
         saved_path = os.path.splitext(saved_path)[0] + ".LDF"
+        placed_squads = [s for s in self.squads if self.map_cell_is_valid(s)]
+        placed_hosts = [h for h in self.host_stations if self.map_cell_is_valid(h)]
+        skipped_squads = len(self.squads) - len(placed_squads)
+        skipped_hosts = len(self.host_stations) - len(placed_hosts)
+
+        if skipped_squads or skipped_hosts:
+            messagebox.showwarning(
+                "Unplaced Entries Skipped",
+                "Some list entries have not been placed on the map and will not be exported:\n\n"
+                f"Squads: {skipped_squads}\n"
+                f"Host Stations: {skipped_hosts}"
+            )
 
         try:
             with open(saved_path, "w", encoding="utf-8") as f:
@@ -612,7 +624,7 @@ class MapIOMixin:
                         if gm.get('hidden', False): w("   mb_status = unknown")
                         w("end"); w(";------------------------------------------------------------")
 
-                for h in self.get_host_stations_for_save():
+                for h in self.get_host_stations_for_save(placed_hosts):
                      w("begin_robo")
                      w(f"   owner = {h['owner']}")
                      if h['custom_name']: w(f"   vehicle = {h['veh']} ; {h['custom_name']}")
@@ -646,7 +658,7 @@ class MapIOMixin:
                      w("   cpl_delay = 0")
                      w("end"); w(";------------------------------------------------------------")
 
-                for s in self.squads:
+                for s in placed_squads:
                     w("begin_squad"); w(f"   owner = {s['owner']}")
                     if s['custom_name']: w(f"   vehicle = {s['veh']} ; {s['custom_name']}")
                     else: w(f"   vehicle = {s['veh']} ; {self.defs['veh'].get(s['veh'],'')}")
@@ -701,12 +713,13 @@ class MapIOMixin:
             self.open_saved_map_file(saved_path)
         return True
 
-    def get_host_stations_for_save(self):
+    def get_host_stations_for_save(self, host_stations=None):
         player_owner = getattr(self, 'player_owner', 1)
-        if not self.host_stations:
-            return self.host_stations
+        hosts = self.host_stations if host_stations is None else host_stations
+        if not hosts:
+            return hosts
 
-        player_hosts = [h for h in self.host_stations if h.get('owner') == player_owner]
+        player_hosts = [h for h in hosts if h.get('owner') == player_owner]
         if not player_hosts:
             faction_name = self.get_faction_display_name(player_owner) if hasattr(self, 'get_faction_display_name') else str(player_owner)
             try:
@@ -717,9 +730,9 @@ class MapIOMixin:
                 )
             except:
                 pass
-            return self.host_stations
+            return hosts
 
-        other_hosts = [h for h in self.host_stations if h.get('owner') != player_owner]
+        other_hosts = [h for h in hosts if h.get('owner') != player_owner]
         return player_hosts + other_hosts
 
     def reset_map(self, confirm=True, track_history=True):

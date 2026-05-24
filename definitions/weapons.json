@@ -1,131 +1,131 @@
 [
   {
     "id": 1,
-    "name": "Whizkid"
+    "name": "Weasel weapon"
   },
   {
     "id": 2,
-    "name": "Granate1"
+    "name": "Jaguar weapon"
   },
   {
     "id": 3,
-    "name": "Granate2"
+    "name": "Tiger weapon"
   },
   {
     "id": 4,
-    "name": "Snoopy"
+    "name": "Falcon weapon"
   },
   {
     "id": 5,
-    "name": "Hammer"
+    "name": "Marauder weapon"
   },
   {
     "id": 6,
-    "name": "Firestorm"
+    "name": "Wasp weapon"
   },
   {
     "id": 7,
-    "name": "Strongarm"
+    "name": "Warhammer weapon"
   },
   {
     "id": 8,
-    "name": "Strongarm2"
+    "name": "Phantom weapon"
   },
   {
     "id": 10,
-    "name": "Knuddeloerpse"
+    "name": "Firefly weapon"
   },
   {
     "id": 12,
-    "name": "Lanze Der Wahrheit"
+    "name": "Rhino weapon"
   },
   {
     "id": 13,
-    "name": "Flach Und Aus"
+    "name": "Evilfurz weapon"
   },
   {
     "id": 14,
-    "name": "Killercloud"
+    "name": "Dragonfly weapon"
   },
   {
     "id": 15,
-    "name": "Der Schlaue Urfin"
+    "name": "Hornet weapon"
   },
   {
     "id": 16,
-    "name": "Whizkid2"
+    "name": "Fox weapon"
   },
   {
     "id": 17,
-    "name": "Fyugism"
+    "name": "Yang weapon"
   },
   {
     "id": 18,
-    "name": "16tons"
+    "name": "Zeppelin weapon"
   },
   {
     "id": 19,
-    "name": "Gully"
+    "name": "Drone weapon"
   },
   {
     "id": 20,
-    "name": "Userbronsteijns Neffe"
+    "name": "Bronsteijn weapon"
   },
   {
     "id": 22,
-    "name": "Chickenwing"
+    "name": "Speedy weapon"
   },
   {
     "id": 23,
-    "name": "Jeanmichel"
+    "name": "Ying weapon"
   },
   {
     "id": 24,
-    "name": "Achilles"
+    "name": "Ghargoil I weapon"
   },
   {
     "id": 25,
-    "name": "Tillie Willie"
+    "name": "Ghargoil III weapon"
   },
   {
     "id": 26,
-    "name": "Ion Tichy"
+    "name": "Tekh Trak weapon"
   },
   {
     "id": 27,
-    "name": "Cohen"
+    "name": "Gigant 2 weapon"
   },
   {
     "id": 28,
-    "name": "Doppelpopel"
+    "name": "Ghargoil II weapon"
   },
   {
     "id": 31,
-    "name": "Trichinenbefall"
+    "name": "Tien Ying weapon"
   },
   {
     "id": 32,
-    "name": "Foggwulf"
+    "name": "Eisenhans weapon"
   },
   {
     "id": 33,
-    "name": "Metzel"
+    "name": "Hetzel weapon"
   },
   {
     "id": 34,
-    "name": "Bronsteijns Neffe"
+    "name": "Bronsteijn weapon"
   },
   {
     "id": 36,
-    "name": "Serpskoje"
+    "name": "Serp weapon"
   },
   {
     "id": 37,
-    "name": "Foggwulf2"
+    "name": "Leonid weapon"
   },
   {
     "id": 38,
-    "name": "Bumm"
+    "name": "Mnosjetz weapon"
   },
   {
     "id": 49,
@@ -133,99 +133,99 @@
   },
   {
     "id": 63,
-    "name": "Blocker"
+    "name": "Hourglass weapon"
   },
   {
     "id": 64,
-    "name": "Tiny"
+    "name": "Xo1 Quadda weapon"
   },
   {
     "id": 65,
-    "name": "Napoleon"
+    "name": "5p0 Air Prism weapon"
   },
   {
     "id": 66,
-    "name": "Bergsachse"
+    "name": "Static weapon"
   },
   {
     "id": 68,
-    "name": "Zocker"
+    "name": "Ground Cube weapon"
   },
   {
     "id": 69,
-    "name": "Shocker"
+    "name": "Air Stick weapon"
   },
   {
     "id": 70,
-    "name": "Knocker"
+    "name": "Bomber weapon"
   },
   {
     "id": 71,
-    "name": "Rausschmiss"
+    "name": "Mean Green weapon"
   },
   {
     "id": 72,
-    "name": "Answinist"
+    "name": "Slime Lord weapon"
   },
   {
     "id": 73,
-    "name": "Lockerbe"
+    "name": "Blue Spore weapon"
   },
   {
     "id": 80,
-    "name": "Mykonetzflaklaser"
+    "name": "Network Myko Flak weapon"
   },
   {
     "id": 81,
-    "name": "Taer Flak"
+    "name": "Taer Hs Flak weapon"
   },
   {
     "id": 82,
-    "name": "Myko Flak"
+    "name": "Myko Hs Flak weapon"
   },
   {
     "id": 83,
-    "name": "Mini Kyt Flak"
+    "name": "Kyt Tarantul Hs Flak weapon"
   },
   {
     "id": 84,
-    "name": "Big Kyt Flak"
+    "name": "Kyt Scorpio Hs Flak weapon"
   },
   {
     "id": 90,
-    "name": "Vornraus"
+    "name": "Resistance Hs Flak 1 weapon"
   },
   {
     "id": 91,
-    "name": "Hintenraus"
+    "name": "Resistance Hs Flak 4 weapon"
   },
   {
     "id": 92,
-    "name": "Obenraus"
+    "name": "Resistance HS Top Flak weapon"
   },
   {
     "id": 93,
-    "name": "Untenraus"
+    "name": "Resistance HS Bottom Flak weapon"
   },
   {
     "id": 94,
-    "name": "Bsect Missies"
+    "name": "Black Sect Hs Flak 1 weapon"
   },
   {
     "id": 95,
-    "name": "Bsect Blue Eye"
+    "name": "Black Sect Hs Flak 2 weapon"
   },
   {
     "id": 96,
-    "name": "Smallaa"
+    "name": "Resistance Dual Flak I weapon"
   },
   {
     "id": 97,
-    "name": "Stimmgong"
+    "name": "Myko Ground Flak weapon"
   },
   {
     "id": 100,
-    "name": "Usr Flak0"
+    "name": "Resistance Big Flak weapon"
   },
   {
     "id": 101,
@@ -249,19 +249,19 @@
   },
   {
     "id": 106,
-    "name": "Bodenflak"
+    "name": "Giant Ground Flak weapon"
   },
   {
     "id": 107,
-    "name": "Gtflakw"
+    "name": "Gittr T Flak weapon"
   },
   {
     "id": 108,
-    "name": "Tflak"
+    "name": "Taer Flak weapon"
   },
   {
     "id": 111,
-    "name": "Kyt Flak0"
+    "name": "Kyt Flak weapon"
   },
   {
     "id": 112,
@@ -269,7 +269,7 @@
   },
   {
     "id": 115,
-    "name": "Alternate"
+    "name": "Not For Usr weapon"
   },
   {
     "id": 116,
@@ -277,22 +277,22 @@
   },
   {
     "id": 117,
-    "name": "Mykonierflakblitz"
+    "name": "Myko Flak weapon"
   },
   {
     "id": 120,
-    "name": "Untenraus"
+    "name": "Internet Resistance HS Bottom Flak weapon"
   },
   {
     "id": 121,
-    "name": "Big Kyt Flak"
+    "name": "Internet Ghork Flak weapon"
   },
   {
     "id": 122,
-    "name": "Mykonetzflaklaser"
+    "name": "Internet Myko Flak weapon"
   },
   {
     "id": 123,
-    "name": "Taer Flak"
+    "name": "Internet Taer Flak weapon"
   }
 ]

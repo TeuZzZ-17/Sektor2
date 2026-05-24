@@ -136,6 +136,17 @@ class UIMixin:
             return 1
         return self.parse_leading_int(value)
 
+    def format_host_altitude_value(self, value):
+        if value == DEFAULT_HOST_POS_Y:
+            return "Default"
+        return str(value)
+
+    def parse_host_altitude_value(self, value):
+        value = str(value).strip()
+        if not value or value.lower() == "default":
+            return DEFAULT_HOST_POS_Y
+        return int(value)
+
     def parse_leading_int(self, value):
         match = re.match(r'^\s*(\d+)', str(value))
         if not match:
@@ -155,31 +166,12 @@ class UIMixin:
         return str(item_id)
 
     def build_gui(self):
-        # MOD: Removed PanedWindow to prevent Sash/Button glitch. Using Frames.
         self.f_main = tk.Frame(self.root, bg="#222")
         self.f_main.pack(fill=tk.BOTH, expand=True)
 
         self.f_left = tk.Frame(self.f_main, bg="#1a1a1a", width=self.left_panel_width)
         self.f_left.pack(side=tk.LEFT, fill=tk.Y, padx=0, pady=0)
-        self.f_left.pack_propagate(False) # Force width
-
-        self.left_resize_handle = tk.Frame(
-            self.f_main,
-            width=self.left_resize_handle_width,
-            bg="#0b1f1f",
-            cursor="sb_h_double_arrow"
-        )
-        self.left_resize_handle.pack(side=tk.LEFT, fill=tk.Y)
-        self.left_resize_grip = tk.Frame(self.left_resize_handle, bg="#19caca", width=2)
-        self.left_resize_grip.pack(fill=tk.Y, expand=True, padx=4, pady=2)
-        self.left_resize_handle.bind("<Enter>", lambda e: self.left_resize_handle.config(bg="#103333"))
-        self.left_resize_handle.bind("<Leave>", lambda e: self.left_resize_handle.config(bg="#0b1f1f"))
-        self.left_resize_handle.bind("<ButtonPress-1>", self.start_left_panel_resize)
-        self.left_resize_handle.bind("<B1-Motion>", self.do_left_panel_resize)
-        self.left_resize_handle.bind("<ButtonRelease-1>", self.stop_left_panel_resize)
-        self.left_resize_grip.bind("<ButtonPress-1>", self.start_left_panel_resize)
-        self.left_resize_grip.bind("<B1-Motion>", self.do_left_panel_resize)
-        self.left_resize_grip.bind("<ButtonRelease-1>", self.stop_left_panel_resize)
+        self.f_left.pack_propagate(False)
 
         self.f_right = tk.Frame(self.f_main, bg="#000")
         self.f_right.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
@@ -339,6 +331,7 @@ class UIMixin:
         self.root.bind_all("<Control-z>", self.undo)
         self.root.bind_all("<Control-y>", self.redo)
         self.root.bind_all("<Control-Shift-Z>", self.redo)
+        self.root.bind_all("<Delete>", self.delete_selected_object_from_key)
         self.update_history_buttons()
 
     def update_window_title(self):
@@ -458,34 +451,6 @@ class UIMixin:
                     if v_int in self.custom_definitions[cat]:
                         self.entry_custom_name.insert(0, self.custom_definitions[cat][v_int])
                 except: pass
-
-    def start_left_panel_resize(self, event):
-        self._left_resizing = True
-        self._left_resize_start_x = event.x_root
-        self._left_resize_start_width = self.f_left.winfo_width()
-        self.left_resize_handle.config(bg="#145050")
-
-    def do_left_panel_resize(self, event):
-        if not self._left_resizing:
-            return
-
-        dx = event.x_root - self._left_resize_start_x
-        max_dynamic = self.f_main.winfo_width() - self.left_resize_handle_width - self.min_map_area_width
-        max_allowed = min(self.left_panel_max_width, max_dynamic)
-        if max_allowed < self.left_panel_min_width:
-            max_allowed = self.left_panel_min_width
-        new_width = max(self.left_panel_min_width, min(max_allowed, self._left_resize_start_width + dx))
-
-        if new_width != self.left_panel_width:
-            self.left_panel_width = new_width
-            self.f_left.config(width=new_width)
-            self.schedule_palette_resize_refresh()
-
-    def stop_left_panel_resize(self, event):
-        self._left_resizing = False
-        self.left_resize_handle.config(bg="#103333")
-        self.refresh_palette_layout(force_full=True)
-        self.refresh_map_layout(force_full=True)
 
     def schedule_palette_resize_refresh(self):
         if self._palette_resize_refresh_pending:
@@ -725,7 +690,7 @@ class UIMixin:
         panel = self.panels['GATE']
         for w in panel.winfo_children(): w.destroy()
         p = tk.Frame(panel, bg="#1a1a1a")
-        p.pack(anchor=tk.NW, padx=5, pady=0)
+        p.pack(fill=tk.X, anchor=tk.NW, padx=12, pady=6)
 
         f_slots = tk.Frame(p, bg="#1a1a1a"); f_slots.pack(fill=tk.X, pady=5)
 
@@ -755,11 +720,11 @@ class UIMixin:
         g_data = self.gates[self.current_gate_slot]
 
         # --- PRESET DROPDOWN (GATE) ---
-        f_pre = tk.Frame(p, bg="#1a1a1a"); f_pre.pack(fill=tk.X, pady=(10,2))
+        f_pre = tk.Frame(p, bg="#1a1a1a"); f_pre.pack(anchor=tk.CENTER, pady=(10,2))
         tk.Label(f_pre, text="Road Preset:", bg="#1a1a1a", fg="#aaa").pack(side=tk.LEFT, padx=5)
         
         gate_preset_values = ["With Roads (5/6)", "No Road (25/26)"]
-        cb_gate_preset = ttk.Combobox(f_pre, values=gate_preset_values, state="readonly", width=22)
+        cb_gate_preset = ttk.Combobox(f_pre, values=gate_preset_values, state="readonly", width=24)
         cb_gate_preset.pack(side=tk.LEFT, padx=5)
         
         if g_data['closed_bp'] == 5 and g_data['opened_bp'] == 6:
@@ -791,20 +756,20 @@ class UIMixin:
 
         cb_gate_preset.bind("<<ComboboxSelected>>", on_gate_preset_select)
         
-        tk.Label(p, text="(Custom values allowed)", fg="#777", bg="#1a1a1a", font=("Arial", 7)).pack(anchor=tk.W, pady=(0,5))
+        tk.Label(p, text="(Custom values allowed)", fg="#777", bg="#1a1a1a", font=("Arial", 7)).pack(anchor=tk.CENTER, pady=(0,5))
 
-        f = tk.Frame(p, bg="#1a1a1a"); f.pack(fill=tk.X, pady=5)
+        f = tk.Frame(p, bg="#1a1a1a"); f.pack(anchor=tk.CENTER, pady=5)
 
-        tk.Label(f, text="Target Level:", fg="white", bg="#1a1a1a", width=10).grid(row=0, column=0)
-        e_tgt = tk.Entry(f, width=5); e_tgt.grid(row=0, column=1)
+        tk.Label(f, text="Target Level:", fg="white", bg="#1a1a1a", width=12).grid(row=0, column=0, sticky="e", padx=(0, 4), pady=2)
+        e_tgt = tk.Entry(f, width=8); e_tgt.grid(row=0, column=1, sticky="w", padx=(0, 12), pady=2)
         e_tgt.insert(0, str(g_data['target']))
 
-        tk.Label(f, text="Off Model:", fg="white", bg="#1a1a1a", width=10).grid(row=0, column=2)
-        e_cls = tk.Entry(f, width=5); e_cls.grid(row=0, column=3)
+        tk.Label(f, text="Off Model:", fg="white", bg="#1a1a1a", width=10).grid(row=0, column=2, sticky="e", padx=(0, 4), pady=2)
+        e_cls = tk.Entry(f, width=8); e_cls.grid(row=0, column=3, sticky="w", pady=2)
         e_cls.insert(0, str(g_data['closed_bp']))
 
-        tk.Label(f, text="On Model:", fg="white", bg="#1a1a1a", width=10).grid(row=1, column=0)
-        e_opn = tk.Entry(f, width=5); e_opn.grid(row=1, column=1)
+        tk.Label(f, text="On Model:", fg="white", bg="#1a1a1a", width=12).grid(row=1, column=0, sticky="e", padx=(0, 4), pady=2)
+        e_opn = tk.Entry(f, width=8); e_opn.grid(row=1, column=1, sticky="w", padx=(0, 12), pady=2)
         e_opn.insert(0, str(g_data['opened_bp']))
 
         def upd_g(ev):
@@ -831,7 +796,7 @@ class UIMixin:
             except: pass
         e_tgt.bind("<KeyRelease>", upd_g); e_cls.bind("<KeyRelease>", upd_g); e_opn.bind("<KeyRelease>", upd_g)
 
-        f_opt = tk.Frame(p, bg="#1a1a1a"); f_opt.pack(fill=tk.X, pady=(4, 2))
+        f_opt = tk.Frame(p, bg="#1a1a1a"); f_opt.pack(anchor=tk.CENTER, pady=(4, 2))
         self.var_gate_hid = tk.BooleanVar(value=g_data.get('hidden', False))
         def tog_gate_hid():
             val = self.var_gate_hid.get()
@@ -839,7 +804,7 @@ class UIMixin:
                 self.push_undo_snapshot()
                 g_data['hidden'] = val
                 self.dirty = True
-        tk.Checkbutton(f_opt, text="Hide in Briefing", variable=self.var_gate_hid, command=tog_gate_hid, bg="#1a1a1a", fg="white", selectcolor="#444").pack(anchor=tk.W, padx=5)
+        tk.Checkbutton(f_opt, text="Hide in Briefing", variable=self.var_gate_hid, command=tog_gate_hid, bg="#1a1a1a", fg="white", selectcolor="#444").pack(anchor=tk.CENTER, padx=5)
 
         def set_t(t): self.gate_tool=t
         tk.Button(p, text="[ PLACE BEAMGATE ]", command=lambda: set_t("GATE"), bg="#00FFFF", fg="black", width=24).pack(anchor=tk.CENTER, pady=5)
@@ -854,7 +819,7 @@ class UIMixin:
         panel = self.panels['ITEM']
         for w in panel.winfo_children(): w.destroy()
         p = tk.Frame(panel, bg="#1a1a1a")
-        p.pack(anchor=tk.NW, padx=5, pady=0)
+        p.pack(fill=tk.X, anchor=tk.NW, padx=12, pady=6)
 
         f_slots = tk.Frame(p, bg="#1a1a1a"); f_slots.pack(fill=tk.X, pady=5)
 
@@ -874,22 +839,24 @@ class UIMixin:
                 self.push_undo_snapshot()
                 idx = self.visible_item_slots
                 old_cell = self.get_special_cell(self.items[idx])
+                key_cells = list(self.items[idx].get('keys', []))
+                self.clear_all_item_key_visuals(self.items[idx])
                 self.clear_special_auto_visual("ITEM", self.items[idx])
                 self.items[idx] = {'active': False, 'x': -1, 'y': -1, 'keys': [], 'countdown': 300000,
                           'inactive_bp': 35, 'active_bp': 36, 'trigger_bp': 37, 'type': 1, 'hidden': False}
                 self.visible_item_slots -= 1
                 if self.current_item_slot > self.visible_item_slots: self.current_item_slot = self.visible_item_slots
-                self.build_item_ui(); self.redraw_cells(old_cell)
+                self.build_item_ui(); self.redraw_cells(old_cell, *key_cells)
             tk.Button(f_slots, text="-", bg="#880000", fg="white", width=2, command=rem_slot).pack(side=tk.LEFT, padx=2)
 
         i_data = self.items[self.current_item_slot]
         
         # --- PRESET DROPDOWN (ITEM) ---
-        f_pre = tk.Frame(p, bg="#1a1a1a"); f_pre.pack(anchor=tk.W, pady=(10,2))
+        f_pre = tk.Frame(p, bg="#1a1a1a"); f_pre.pack(anchor=tk.CENTER, pady=(10,2))
         tk.Label(f_pre, text="Model Preset:", bg="#1a1a1a", fg="#aaa", width=12, anchor="e").pack(side=tk.LEFT, padx=(0, 5))
         
         preset_values = ["Standard (35/36/37)", "Parasite (68/69/70)"]
-        cb_preset = ttk.Combobox(f_pre, values=preset_values, state="readonly", width=20)
+        cb_preset = ttk.Combobox(f_pre, values=preset_values, state="readonly", width=22)
         cb_preset.pack(side=tk.LEFT)
         
         if i_data['inactive_bp'] == 35 and i_data['active_bp'] == 36 and i_data['trigger_bp'] == 37:
@@ -918,30 +885,60 @@ class UIMixin:
             self.draw_grid()
 
         cb_preset.bind("<<ComboboxSelected>>", on_preset_select)
-        
-        tk.Label(p, text="(Custom values allowed)", fg="#777", bg="#1a1a1a", font=("Arial", 7)).pack(anchor=tk.W, pady=(0,5))
-        
-        f = tk.Frame(p, bg="#1a1a1a"); f.pack(fill=tk.X, pady=5)
 
-        tk.Label(f, text="Timer:", fg="white", bg="#1a1a1a", width=8).grid(row=0, column=0, sticky="e")
-        e_cnt = tk.Entry(f, width=6); e_cnt.grid(row=0, column=1, sticky="w"); e_cnt.insert(0, str(i_data['countdown']))
+        # --- KEYSECTOR VISUAL DROPDOWN (ITEM) ---
+        f_key_pre = tk.Frame(p, bg="#1a1a1a"); f_key_pre.pack(anchor=tk.CENTER, pady=(8, 2))
+        tk.Label(f_key_pre, text="Keysect Preset:", bg="#1a1a1a", fg="#aaa", width=14, anchor="e").pack(side=tk.LEFT, padx=(0, 5))
+
+        key_visual_values = ["No Road (F3)", "With Roads (F4)"]
+        cb_key_visual = ttk.Combobox(f_key_pre, values=key_visual_values, state="readonly", width=22)
+        cb_key_visual.pack(side=tk.LEFT)
+
+        if self.get_item_key_visual_typ(i_data) == "f4":
+            cb_key_visual.set("With Roads (F4)")
+        else:
+            cb_key_visual.set("No Road (F3)")
+
+        def on_key_visual_select(event=None):
+            old_visual = self.get_item_key_visual_typ(i_data)
+            val = cb_key_visual.get()
+            new_visual = "f4" if "F4" in val else "f3"
+            if old_visual == new_visual:
+                return
+            self.push_undo_snapshot()
+            i_data['_key_visual_typ'] = new_visual
+            changed_cells = self.sync_item_key_visual_preset(i_data, old_visual, new_visual)
+            if changed_cells:
+                self.invalidate_render_indexes()
+                self.redraw_cells(*changed_cells)
+            else:
+                self.dirty = True
+
+        cb_key_visual.bind("<<ComboboxSelected>>", on_key_visual_select)
+        
+        tk.Label(p, text="(Custom values allowed)", fg="#777", bg="#1a1a1a", font=("Arial", 7)).pack(anchor=tk.CENTER, pady=(0,5))
+        
+        f = tk.Frame(p, bg="#1a1a1a"); f.pack(anchor=tk.CENTER, pady=5)
+
+        tk.Label(f, text="Timer:", fg="white", bg="#1a1a1a", width=10).grid(row=0, column=0, sticky="e", padx=(0, 4), pady=2)
+        e_cnt = tk.Entry(f, width=8); e_cnt.grid(row=0, column=1, sticky="w", padx=(0, 8), pady=2); e_cnt.insert(0, str(i_data['countdown']))
 
         lbl_mins = tk.Label(f, text="", bg="#1a1a1a", fg="#00FF00", font=("Arial", 8))
-        lbl_mins.grid(row=0, column=2, padx=2, sticky="w")
+        lbl_mins.grid(row=0, column=2, padx=(0, 12), sticky="w")
 
-        tk.Label(f, text="Type:", fg="white", bg="#1a1a1a", width=5).grid(row=0, column=3, sticky="e")
-        e_typ = ttk.Combobox(f, values=["Default"], width=8)
-        e_typ.grid(row=0, column=4, sticky="w")
+        tk.Label(f, text="Type:", fg="white", bg="#1a1a1a", width=8).grid(row=0, column=3, sticky="e", padx=(0, 4), pady=2)
+        e_typ = ttk.Combobox(f, values=["Default"], width=10)
+        e_typ.grid(row=0, column=4, sticky="w", pady=2)
         e_typ.insert(0, self.format_item_type_value(i_data['type']))
 
-        tk.Label(f, text="Off Model:", fg="white", bg="#1a1a1a", width=8).grid(row=1, column=0, sticky="e")
-        e_ina = tk.Entry(f, width=5); e_ina.grid(row=1, column=1, sticky="w"); e_ina.insert(0, str(i_data['inactive_bp']))
+        tk.Label(f, text="Off Model:", fg="white", bg="#1a1a1a", width=10).grid(row=1, column=0, sticky="e", padx=(0, 4), pady=2)
+        e_ina = tk.Entry(f, width=8); e_ina.grid(row=1, column=1, sticky="w", padx=(0, 8), pady=2); e_ina.insert(0, str(i_data['inactive_bp']))
 
-        tk.Label(f, text="On:", fg="white", bg="#1a1a1a", width=5).grid(row=1, column=3, sticky="e")
-        e_act = tk.Entry(f, width=5); e_act.grid(row=1, column=4, sticky="w"); e_act.insert(0, str(i_data['active_bp']))
+        tk.Label(f, text="On Model:", fg="white", bg="#1a1a1a", width=8).grid(row=1, column=3, sticky="e", padx=(0, 4), pady=2)
+        e_act = tk.Entry(f, width=8); e_act.grid(row=1, column=4, sticky="w", pady=2); e_act.insert(0, str(i_data['active_bp']))
 
-        tk.Label(f, text="Trigger:", fg="white", bg="#1a1a1a", width=8).grid(row=2, column=0, sticky="e")
-        e_trg = tk.Entry(f, width=5); e_trg.grid(row=2, column=1, sticky="w"); e_trg.insert(0, str(i_data['trigger_bp']))
+        tk.Label(f, text="Trigger:", fg="white", bg="#1a1a1a", width=10).grid(row=2, column=0, sticky="e", padx=(0, 4), pady=2)
+        e_trg = tk.Entry(f, width=8); e_trg.grid(row=2, column=1, sticky="w", padx=(0, 8), pady=2); e_trg.insert(0, str(i_data['trigger_bp']))
 
         def upd(ev=None):
             try:
@@ -991,7 +988,7 @@ class UIMixin:
         for e in [e_cnt, e_typ, e_ina, e_act, e_trg]: e.bind("<KeyRelease>", upd)
         e_typ.bind("<<ComboboxSelected>>", upd)
 
-        f_opt = tk.Frame(p, bg="#1a1a1a"); f_opt.pack(fill=tk.X, pady=(4, 2))
+        f_opt = tk.Frame(p, bg="#1a1a1a"); f_opt.pack(anchor=tk.CENTER, pady=(4, 2))
         self.var_item_hid = tk.BooleanVar(value=i_data.get('hidden', False))
         def tog_item_hid():
             val = self.var_item_hid.get()
@@ -999,12 +996,12 @@ class UIMixin:
                 self.push_undo_snapshot()
                 i_data['hidden'] = val
                 self.dirty = True
-        tk.Checkbutton(f_opt, text="Hide in Briefing", variable=self.var_item_hid, command=tog_item_hid, bg="#1a1a1a", fg="white", selectcolor="#444").pack(anchor=tk.W, padx=5)
+        tk.Checkbutton(f_opt, text="Hide in Briefing", variable=self.var_item_hid, command=tog_item_hid, bg="#1a1a1a", fg="white", selectcolor="#444").pack(anchor=tk.CENTER, padx=5)
 
         def set_t(t): self.item_tool=t
-        f_place = tk.Frame(p, bg="#1a1a1a"); f_place.pack(anchor=tk.W, pady=(5, 0))
-        tk.Button(f_place, text="[ PLACE BOMB ]", command=lambda: set_t("ITEM"), bg="#FF00FF", fg="black", width=24).pack(anchor=tk.W, pady=(0, 2))
-        tk.Button(f_place, text="[ PLACE KEYSECT ]", command=lambda: set_t("KEY"), bg="#FF9900", fg="black", width=24).pack(anchor=tk.W)
+        f_place = tk.Frame(p, bg="#1a1a1a"); f_place.pack(anchor=tk.CENTER, pady=(8, 0))
+        tk.Button(f_place, text="[ PLACE BOMB ]", command=lambda: set_t("ITEM"), bg="#FF00FF", fg="black", width=24).pack(anchor=tk.CENTER, pady=(0, 3))
+        tk.Button(f_place, text="[ PLACE KEYSECT ]", command=lambda: set_t("KEY"), bg="#FF9900", fg="black", width=24).pack(anchor=tk.CENTER)
         self.upd_lbl()
         self.draw_grid()
 
@@ -1015,7 +1012,7 @@ class UIMixin:
         panel = self.panels['GEM']
         for w in panel.winfo_children(): w.destroy()
         p = tk.Frame(panel, bg="#1a1a1a")
-        p.pack(fill=tk.X, anchor=tk.NW, padx=5, pady=0)
+        p.pack(fill=tk.X, anchor=tk.NW, padx=12, pady=6)
 
         # 1. SLOTS
         f_slots = tk.Frame(p, bg="#1a1a1a"); f_slots.pack(fill=tk.X, pady=5)
@@ -1043,11 +1040,11 @@ class UIMixin:
         data = self.gems[self.current_gem_slot]
 
         # 2. PROPERTIES (MODEL & TYPE)
-        f_prop = tk.Frame(p, bg="#1a1a1a"); f_prop.pack(anchor=tk.W, pady=10)
+        f_prop = tk.Frame(p, bg="#1a1a1a"); f_prop.pack(anchor=tk.CENTER, pady=10)
 
         tk.Label(f_prop, text="Gem Model:", fg="white", bg="#1a1a1a").grid(row=0, column=0, sticky="e", padx=5, pady=2)
 
-        cb_gem_model = ttk.Combobox(f_prop, values=self.GEM_MODEL_VALUES, width=20)
+        cb_gem_model = ttk.Combobox(f_prop, values=self.GEM_MODEL_VALUES, width=26)
         cb_gem_model.grid(row=0, column=1, sticky="w", padx=5, pady=2)
         cb_gem_model.set(self.format_gem_model_value(data['blg']))
 
@@ -1084,10 +1081,10 @@ class UIMixin:
                  data['type'] = new_type
              self.upd_lbl(); self.draw_grid()
         om = ttk.OptionMenu(f_prop, type_var, current_display, *type_map.values(), command=upd_t)
-        om.config(width=16)
+        om.config(width=20)
         om.grid(row=2, column=1, sticky="w", padx=5, pady=2)
 
-        f_opt = tk.Frame(p, bg="#1a1a1a"); f_opt.pack(fill=tk.X, pady=(0, 6))
+        f_opt = tk.Frame(p, bg="#1a1a1a"); f_opt.pack(anchor=tk.CENTER, pady=(0, 6))
         self.var_gem_hid = tk.BooleanVar(value=data.get('hidden', False))
         def tog_gem_hid():
             val = self.var_gem_hid.get()
@@ -1095,38 +1092,36 @@ class UIMixin:
                 self.push_undo_snapshot()
                 data['hidden'] = val
                 self.dirty = True
-        tk.Checkbutton(f_opt, text="Hide in Briefing", variable=self.var_gem_hid, command=tog_gem_hid, bg="#1a1a1a", fg="white", selectcolor="#444").pack(anchor=tk.W, padx=5)
+        tk.Checkbutton(f_opt, text="Hide in Briefing", variable=self.var_gem_hid, command=tog_gem_hid, bg="#1a1a1a", fg="white", selectcolor="#444").pack(anchor=tk.CENTER, padx=5)
 
         # 3. ACTIONS
-        tk.Label(p, text="--- ACTIONS ---", fg="#00FF00", bg="#1a1a1a", font=("bold")).pack(anchor=tk.W, pady=(15,5))
-        f_act = tk.Frame(p, bg="#1a1a1a"); f_act.pack(anchor=tk.W)
+        tk.Label(p, text="--- ACTIONS ---", fg="#00FF00", bg="#1a1a1a", font=("bold")).pack(anchor=tk.CENTER, pady=(15,5))
+        f_act = tk.Frame(p, bg="#1a1a1a"); f_act.pack(anchor=tk.CENTER)
 
         # Define Variables first
         tgt_type_var = tk.StringVar(value="modify_vehicle")
 
-        tk.Label(f_act, text="Modify:", fg="white", bg="#1a1a1a").grid(row=0, column=0, sticky="w", padx=5)
-
-        # Dropdown Modify
+        tk.Label(f_act, text="Modify:", fg="white", bg="#1a1a1a", width=7, anchor="e").grid(row=0, column=0, sticky="e", padx=(0, 5), pady=2)
         om_mod = ttk.OptionMenu(f_act, tgt_type_var, "modify_vehicle", "modify_vehicle", "modify_building", "modify_weapon")
-        om_mod.config(width=17)
-        om_mod.grid(row=1, column=0, sticky="w", padx=5, pady=(0, 4))
+        om_mod.config(width=22)
+        om_mod.grid(row=0, column=1, sticky="w", pady=2)
 
-        tk.Label(f_act, text="ID:", fg="white", bg="#1a1a1a").grid(row=2, column=0, sticky="w", padx=5)
-        cb_target_id = ttk.Combobox(f_act, width=24)
-        cb_target_id.grid(row=3, column=0, sticky="w", padx=5, pady=(0, 4))
+        tk.Label(f_act, text="ID:", fg="white", bg="#1a1a1a", width=7, anchor="e").grid(row=1, column=0, sticky="e", padx=(0, 5), pady=2)
+        cb_target_id = ttk.Combobox(f_act, width=34)
+        cb_target_id.grid(row=1, column=1, sticky="w", pady=2)
 
-        tk.Label(f_act, text="Do:", fg="white", bg="#1a1a1a").grid(row=4, column=0, sticky="w", padx=5)
+        tk.Label(f_act, text="Do:", fg="white", bg="#1a1a1a", width=7, anchor="e").grid(row=2, column=0, sticky="e", padx=(0, 5), pady=2)
 
-        param_combo = ttk.Combobox(f_act, values=["enable", "add_energy", "add_shield", "num_weapons"], width=17)
+        param_combo = ttk.Combobox(f_act, values=["enable", "add_energy", "add_shield", "num_weapons"], width=22)
         param_combo.set("enable")
-        param_combo.grid(row=5, column=0, sticky="w", padx=5, pady=(0, 4))
+        param_combo.grid(row=2, column=1, sticky="w", pady=2)
 
-        tk.Label(f_act, text="Val:", fg="white", bg="#1a1a1a").grid(row=6, column=0, sticky="w", padx=5)
-        e_val = tk.Entry(f_act, width=8); e_val.grid(row=7, column=0, sticky="w", padx=5)
+        tk.Label(f_act, text="Val:", fg="white", bg="#1a1a1a", width=7, anchor="e").grid(row=3, column=0, sticky="e", padx=(0, 5), pady=2)
+        e_val = tk.Entry(f_act, width=8); e_val.grid(row=3, column=1, sticky="w", pady=2)
         e_val.insert(0,"0")
 
         # Custom Definition Note
-        tk.Label(f_act, text="Custom definition allowed", fg="#777", bg="#1a1a1a", font=("Arial", 7)).grid(row=8, column=0, sticky="w", padx=5, pady=(0,5))
+        tk.Label(f_act, text="Custom definition allowed", fg="#777", bg="#1a1a1a", font=("Arial", 7)).grid(row=4, column=1, sticky="w", pady=(0,5))
 
         # LOGIC FOR AUTO-UPDATE (action controls only)
         def on_modify_change(*args):
@@ -1153,8 +1148,8 @@ class UIMixin:
         on_modify_change()
 
         # LISTBOX & SCROLLBAR
-        lb_frame = tk.Frame(p); lb_frame.pack(anchor=tk.W, padx=0, pady=5)
-        lb = tk.Listbox(lb_frame, height=5, width=32, bg="#222", fg="white", selectbackground="#008888", selectforeground="white", font=("Courier", 9))
+        lb_frame = tk.Frame(p); lb_frame.pack(anchor=tk.CENTER, padx=0, pady=5)
+        lb = tk.Listbox(lb_frame, height=5, width=46, bg="#222", fg="white", selectbackground="#008888", selectforeground="white", font=("Courier", 9))
         lb.pack(side=tk.LEFT)
         sb = tk.Scrollbar(
             lb_frame,
@@ -1198,14 +1193,14 @@ class UIMixin:
                 data['actions'].pop(sel[0]); refresh_list()
 
         refresh_list()
-        f_btns = tk.Frame(p, bg="#1a1a1a"); f_btns.pack(anchor=tk.W, pady=2)
+        f_btns = tk.Frame(p, bg="#1a1a1a"); f_btns.pack(anchor=tk.CENTER, pady=2)
         tk.Button(f_btns, text="ADD", command=add_action, bg="#005500", fg="white", width=8).pack(side=tk.LEFT, padx=10)
         tk.Button(f_btns, text="DEL", command=del_action, bg="#550000", fg="white", width=8).pack(side=tk.RIGHT, padx=10)
 
         # 4. PLACE BUTTON
         f_place = tk.Frame(p, bg="#1a1a1a")
-        f_place.pack(anchor=tk.W, padx=5, pady=10)
-        tk.Button(f_place, text="[ PLACE GEM ON MAP ]", command=lambda: self.set_gem_tool(), bg="#00FF00", fg="black", width=24).pack()
+        f_place.pack(anchor=tk.CENTER, pady=10)
+        tk.Button(f_place, text="[ PLACE GEM ON MAP ]", command=lambda: self.set_gem_tool(), bg="#00FF00", fg="black", width=24).pack(anchor=tk.CENTER)
         self.upd_lbl()
         self.draw_grid()
 
@@ -1218,27 +1213,67 @@ class UIMixin:
              return
         self.gem_tool = "GEM"
 
+    def parse_definition_entry(self, kind, value, default_id, custom_name):
+        val = str(value).strip()
+        match = re.match(r'^(\d+)\s*-\s*(.*)$', val)
+        if match:
+            item_id = int(match.group(1))
+            name = match.group(2).strip() or None
+            return item_id, name
+        try:
+            item_id = int(val)
+            name = custom_name if item_id not in self.defs.get(kind, {}) else None
+            return item_id, name
+        except:
+            return default_id, None
+
+    def map_cell_is_valid(self, obj):
+        if not obj:
+            return False
+        x = obj.get('x', -1)
+        y = obj.get('y', -1)
+        return 0 <= x < self.mw and 0 <= y < self.mh
+
+    def delete_selected_object_from_key(self, event=None):
+        if event is not None:
+            widget_class = event.widget.winfo_class()
+            if widget_class in ("Entry", "TEntry", "Text", "TCombobox", "Spinbox"):
+                return None
+        if self.mode == "SQUAD":
+            self.delete_selected_squad()
+            return "break"
+        if self.mode == "HOST":
+            self.delete_selected_host()
+            return "break"
+        return None
+
     def build_squad_ui(self):
         p = self.panels['SQUAD']
         for w in p.winfo_children(): w.destroy()
+        source_squad = self.current_squad_data
+        if 0 <= self.current_squad_index < len(self.squads):
+            source_squad = self.squads[self.current_squad_index]
 
-        tk.Label(p, text="SQUAD PLACER", bg="#FF4400", fg="black", font=("bold", 12)).pack(fill=tk.X, pady=(10,5))
+        tk.Label(p, text="SQUAD PLACER", bg="#FF4400", fg="black", font=("bold", 12)).pack(fill=tk.X, pady=(10, 6))
 
-        # Faction
-        f_fac = tk.Frame(p, bg="#1a1a1a"); f_fac.pack(fill=tk.X, pady=2)
-        tk.Label(f_fac, text="Owner:", fg="white", bg="#1a1a1a").pack(side=tk.LEFT, padx=5)
+        editor = tk.Frame(p, bg="#1a1a1a")
+        editor.pack(fill=tk.X, padx=12, pady=(2, 6))
 
-        self.btn_squad_fac = tk.Menubutton(f_fac, text="1", bg="#333", fg="white", relief="raised")
-        self.btn_squad_fac.pack(side=tk.LEFT, padx=5)
+        f_fac = tk.Frame(editor, bg="#1a1a1a"); f_fac.pack(fill=tk.X, pady=3)
+        tk.Label(f_fac, text="Owner:", fg="white", bg="#1a1a1a", width=8, anchor="e").pack(side=tk.LEFT, padx=(0, 6))
+        self.btn_squad_fac = tk.Menubutton(f_fac, text="1", bg="#333", fg="white", relief="raised", width=18)
+        self.btn_squad_fac.pack(side=tk.LEFT)
+        self._squad_control_owner = source_squad.get('owner', 1)
 
         def set_fac(f):
-            if self.current_squad_index != -1:
+            self._squad_control_owner = f
+            if self.current_squad_index != -1 and self.current_squad_index < len(self.squads):
                 cell = self.get_squad_cell(self.current_squad_index)
                 if self.squads[self.current_squad_index]['owner'] != f:
                     self.push_undo_snapshot()
-                self.squads[self.current_squad_index]['owner'] = f
-                self.refresh_squad_list(redraw=False)
-                self.redraw_cells(cell)
+                    self.squads[self.current_squad_index]['owner'] = f
+                    self.refresh_squad_list(redraw=False)
+                    self.redraw_cells(cell)
             else:
                 self.current_squad_data['owner'] = f
             self.btn_squad_fac.config(text=f"{f} ({FACTIONS[f][0]})", fg=FACTIONS[f][1] if FACTIONS[f][1] else "white")
@@ -1247,197 +1282,257 @@ class UIMixin:
         self.btn_squad_fac.configure(menu=menu)
         for i in range(1, 8):
             menu.add_command(label=f"{i} - {FACTIONS[i][0]}", command=lambda x=i: set_fac(x))
-        
-        curr = self.current_squad_data['owner']
-        self.btn_squad_fac.config(text=f"{curr} ({FACTIONS[curr][0]})", fg=FACTIONS[curr][1] if FACTIONS[curr][1] else "white")
+        set_fac(self._squad_control_owner)
 
-        # Vehicle
-        f_veh = tk.Frame(p, bg="#1a1a1a"); f_veh.pack(fill=tk.X, pady=2)
-        tk.Label(f_veh, text="Vehicle:", fg="white", bg="#1a1a1a").pack(side=tk.LEFT, padx=5)
+        f_veh = tk.Frame(editor, bg="#1a1a1a"); f_veh.pack(fill=tk.X, pady=3)
+        tk.Label(f_veh, text="Vehicle:", fg="white", bg="#1a1a1a", width=8, anchor="e").pack(side=tk.LEFT, padx=(0, 6))
+        veh_list = self.definition_combo_values('veh')
+        self.cb_veh = ttk.Combobox(f_veh, values=veh_list, width=32)
+        self.cb_veh.pack(side=tk.LEFT)
+        curr_v = source_squad['veh']
+        curr_name = source_squad.get('custom_name') or self.defs['veh'].get(curr_v, "Unknown")
+        self.cb_veh.set(f"{curr_v} - {curr_name}")
 
-        veh_list = []
-        sorted_vehs = sorted(self.defs['veh'].items())
-        for vid, name in sorted_vehs:
-            veh_list.append(f"{vid} - {name}")
-
-        self.cb_veh = ttk.Combobox(f_veh, values=veh_list, width=25)
-        self.cb_veh.pack(side=tk.LEFT, padx=5)
-
-        curr_v = self.current_squad_data['veh']
-        self.cb_veh.set(f"{curr_v} - {self.defs['veh'].get(curr_v, 'Unknown')}")
-
-        def on_veh_change(ev):
-            if self.current_squad_index != -1:
+        def on_veh_change(ev=None):
+            new_veh, new_name = self.parse_definition_entry('veh', self.cb_veh.get(), 1, "Custom_Unit")
+            if self.current_squad_index != -1 and self.current_squad_index < len(self.squads):
                 cell = self.get_squad_cell(self.current_squad_index)
-                val = self.cb_veh.get().strip()
-                match = re.match(r'^(\d+)\s*-\s*(.*)$', val)
-                old_veh = self.squads[self.current_squad_index]['veh']
-                old_name = self.squads[self.current_squad_index]['custom_name']
-                changed = False
-                if match:
-                    new_veh = int(match.group(1))
-                    new_name = match.group(2).strip() if match.group(2) else old_name
-                    changed = (new_veh != old_veh) or (new_name != old_name)
-                    if changed:
-                        self.push_undo_snapshot()
-                    self.squads[self.current_squad_index]['veh'] = new_veh
-                    if match.group(2): self.squads[self.current_squad_index]['custom_name'] = new_name
-                else:
-                    try: 
-                        new_veh = int(val)
-                        changed = (new_veh != old_veh) or ("Custom_Unit" != old_name)
-                        if changed:
-                            self.push_undo_snapshot()
-                        self.squads[self.current_squad_index]['veh'] = new_veh
-                        self.squads[self.current_squad_index]['custom_name'] = "Custom_Unit"
-                    except: pass
-                self.refresh_squad_list(redraw=False)
-                self.redraw_cells(cell)
+                curr = self.squads[self.current_squad_index]
+                if curr['veh'] != new_veh or curr.get('custom_name') != new_name:
+                    self.push_undo_snapshot()
+                    curr['veh'] = new_veh
+                    curr['custom_name'] = new_name
+                    self.refresh_squad_list(redraw=False)
+                    self.redraw_cells(cell)
+            else:
+                self.current_squad_data['veh'] = new_veh
+                self.current_squad_data['custom_name'] = new_name
+
         self.cb_veh.bind("<<ComboboxSelected>>", on_veh_change)
-        self.cb_veh.bind("<KeyRelease>", on_veh_change)
+        self.cb_veh.bind("<Return>", on_veh_change)
+        tk.Label(editor, text="Custom format: ID - Name", fg="#aaa", bg="#1a1a1a", font=("Arial", 8, "italic")).pack(anchor=tk.W, padx=76, pady=(0, 5))
 
-        tk.Label(p, text="To customize: Type 'ID - Name' directly above", fg="#aaa", bg="#1a1a1a", font=("Arial", 8, "italic")).pack(anchor=tk.W, padx=5, pady=(0,5))
+        f_cnt = tk.Frame(editor, bg="#1a1a1a"); f_cnt.pack(fill=tk.X, pady=3)
+        tk.Label(f_cnt, text="Count:", fg="white", bg="#1a1a1a", width=8, anchor="e").pack(side=tk.LEFT, padx=(0, 6))
+        self.e_squad_cnt = tk.Entry(f_cnt, width=6)
+        self.e_squad_cnt.pack(side=tk.LEFT)
+        self.e_squad_cnt.insert(0, str(source_squad['num']))
 
-        f_cnt = tk.Frame(p, bg="#1a1a1a"); f_cnt.pack(fill=tk.X, pady=2)
-        tk.Label(f_cnt, text="Count:", fg="white", bg="#1a1a1a").pack(side=tk.LEFT, padx=5)
-        self.e_squad_cnt = tk.Entry(f_cnt, width=5); self.e_squad_cnt.pack(side=tk.LEFT, padx=5)
-        self.e_squad_cnt.insert(0, str(self.current_squad_data['num']))
-
-        def upd_cnt(ev):
-            val = 1
-            try: val = int(self.e_squad_cnt.get())
-            except: pass
-            
-            if self.current_squad_index != -1:
+        def upd_cnt(ev=None):
+            try:
+                val = max(1, int(self.e_squad_cnt.get()))
+            except:
+                return
+            if self.current_squad_index != -1 and self.current_squad_index < len(self.squads):
                 cell = self.get_squad_cell(self.current_squad_index)
                 if self.squads[self.current_squad_index]['num'] != val:
                     self.push_undo_snapshot()
-                self.squads[self.current_squad_index]['num'] = val
-                self.refresh_squad_list(redraw=False)
-                self.redraw_cells(cell)
+                    self.squads[self.current_squad_index]['num'] = val
+                    self.refresh_squad_list(redraw=False)
+                    self.redraw_cells(cell)
             else:
                 self.current_squad_data['num'] = val
         self.e_squad_cnt.bind("<KeyRelease>", upd_cnt)
 
-        # --- HIDDEN CHECKBOX ---
-        f_opt = tk.Frame(p, bg="#1a1a1a"); f_opt.pack(fill=tk.X, pady=5)
-        self.var_squad_hid = tk.BooleanVar(value=self.current_squad_data['hidden'])
-        
+        f_opt = tk.Frame(editor, bg="#1a1a1a"); f_opt.pack(fill=tk.X, pady=(4, 2))
+        self.var_squad_hid = tk.BooleanVar(value=source_squad.get('hidden', False))
         def tog_hid():
             val = self.var_squad_hid.get()
-            if self.current_squad_index != -1:
+            if self.current_squad_index != -1 and self.current_squad_index < len(self.squads):
                 cell = self.get_squad_cell(self.current_squad_index)
                 if self.squads[self.current_squad_index]['hidden'] != val:
                     self.push_undo_snapshot()
-                self.squads[self.current_squad_index]['hidden'] = val
-                self.refresh_squad_list(redraw=False)
-                self.redraw_cells(cell)
+                    self.squads[self.current_squad_index]['hidden'] = val
+                    self.refresh_squad_list(redraw=False)
+                    self.redraw_cells(cell)
             else:
                 self.current_squad_data['hidden'] = val
+        tk.Checkbutton(f_opt, text="Hide in Briefing", variable=self.var_squad_hid, command=tog_hid, bg="#1a1a1a", fg="white", selectcolor="#444").pack(anchor=tk.W, padx=76)
 
-        tk.Checkbutton(f_opt, text="Hide in Briefing", variable=self.var_squad_hid, command=tog_hid, bg="#1a1a1a", fg="white", selectcolor="#444").pack(anchor=tk.W, padx=5)
+        def add_squad_to_list():
+            veh, custom_name = self.parse_definition_entry('veh', self.cb_veh.get(), 1, "Custom_Unit")
+            try:
+                num = max(1, int(self.e_squad_cnt.get()))
+            except:
+                messagebox.showwarning("Invalid Squad", "Count must be a number.")
+                return
+            self.push_undo_snapshot()
+            self.squads.append({
+                'owner': self._squad_control_owner,
+                'veh': veh,
+                'num': num,
+                'hidden': self.var_squad_hid.get(),
+                'custom_name': custom_name,
+                'x': -1,
+                'y': -1
+            })
+            self.current_squad_index = len(self.squads) - 1
+            self.invalidate_render_indexes()
+            self.refresh_squad_list(redraw=False)
+            self.select_squad_index(self.current_squad_index)
+            self.dirty = True
 
-        f_list = tk.Frame(p, bg="#1a1a1a"); f_list.pack(fill=tk.BOTH, expand=True, padx=5)
-        tk.Label(f_list, text="Left-Click map to place", bg="#1a1a1a", fg="white").pack(anchor=tk.W)
-        tk.Label(f_list, text="Right-Click map to remove", bg="#1a1a1a", fg="white").pack(anchor=tk.W)
+        f_actions = tk.Frame(editor, bg="#1a1a1a")
+        f_actions.pack(anchor=tk.CENTER, pady=(6, 4))
+        tk.Button(f_actions, text="ADD TO LIST", command=add_squad_to_list, bg="#FF4400", fg="black", font=("Arial", 9, "bold"), width=14).pack(side=tk.LEFT, padx=(0, 6))
+        tk.Button(f_actions, text="DESELECT", command=self.deselect_squad, bg="#333", fg="white", font=("Arial", 9, "bold"), width=11).pack(side=tk.LEFT, padx=(0, 6))
+        tk.Button(f_actions, text="DELETE", command=self.delete_selected_squad, bg="#880000", fg="white", font=("Arial", 9, "bold"), width=10).pack(side=tk.LEFT)
 
-        self.lb_squads = tk.Listbox(f_list, bg="#222", fg="white", height=10,
-                                    selectbackground="#008888", selectforeground="white")
+        f_list = tk.Frame(p, bg="#1a1a1a")
+        f_list.pack(fill=tk.BOTH, expand=True, padx=12, pady=(6, 8))
+
+        self.lb_squads = tk.Listbox(f_list, bg="#222", fg="white", height=10, selectbackground="#008888", selectforeground="white")
         self.lb_squads.pack(fill=tk.BOTH, expand=True)
         self.lb_squads.bind('<<ListboxSelect>>', self.on_squad_select)
 
-        def delete_selected_squad():
-            sel = self.lb_squads.curselection()
-            if not sel: return
-            idx = sel[0]
-            cell = self.get_squad_cell(idx)
-            self.push_undo_snapshot()
-            self.squads.pop(idx)
-            self.current_squad_index = -1 
-            self.invalidate_render_indexes()
-            self.refresh_squad_list(redraw=False)
-            self.redraw_cells(cell)
-            self.var_squad_hid.set(self.current_squad_data['hidden'])
-
-        tk.Button(f_list, text="[ DELETE SELECTED SQUAD ]", command=delete_selected_squad, bg="#880000", fg="white", font=("Arial", 9, "bold")).pack(fill=tk.X, pady=5)
         self.refresh_squad_list()
 
-    def on_squad_select(self, evt):
+    def capture_squad_controls_as_new_config(self):
+        if hasattr(self, 'cb_veh') and self.cb_veh.winfo_exists():
+            veh, custom_name = self.parse_definition_entry('veh', self.cb_veh.get(), 1, "Custom_Unit")
+            self.current_squad_data['veh'] = veh
+            self.current_squad_data['custom_name'] = custom_name
+        if hasattr(self, 'e_squad_cnt') and self.e_squad_cnt.winfo_exists():
+            try:
+                self.current_squad_data['num'] = max(1, int(self.e_squad_cnt.get()))
+            except:
+                pass
+        self.current_squad_data['owner'] = getattr(self, '_squad_control_owner', self.current_squad_data.get('owner', 1))
+        if hasattr(self, 'var_squad_hid'):
+            self.current_squad_data['hidden'] = self.var_squad_hid.get()
+
+    def deselect_squad(self):
         previous_cell = self.get_squad_cell(self.current_squad_index)
-        sel = self.lb_squads.curselection()
-        if sel:
-            idx = sel[0]
-            self.current_squad_index = idx
-            s = self.squads[idx]
-            selected_cell = self.get_squad_cell(idx)
-            
-            self.var_squad_hid.set(s['hidden'])
+        self.capture_squad_controls_as_new_config()
+        self.current_squad_index = -1
+        self._drag_squad_idx = -1
+        if hasattr(self, 'lb_squads') and self.lb_squads.winfo_exists():
+            self._syncing_squad_selection = True
+            try:
+                self.lb_squads.selection_clear(0, tk.END)
+            finally:
+                self._syncing_squad_selection = False
+        self.redraw_cells(previous_cell)
+
+    def select_squad_index(self, idx, redraw=True):
+        if idx < 0 or idx >= len(self.squads):
+            return
+        previous_cell = self.get_squad_cell(self.current_squad_index)
+        self.current_squad_index = idx
+        s = self.squads[idx]
+        selected_cell = self.get_squad_cell(idx)
+        self.current_squad_data = {
+            'owner': s['owner'],
+            'veh': s['veh'],
+            'num': s['num'],
+            'hidden': s.get('hidden', False),
+            'custom_name': s.get('custom_name')
+        }
+        if hasattr(self, 'lb_squads') and self.lb_squads.winfo_exists():
+            self._syncing_squad_selection = True
+            try:
+                self.lb_squads.selection_clear(0, tk.END)
+                self.lb_squads.selection_set(idx)
+                self.lb_squads.activate(idx)
+                self.lb_squads.see(idx)
+            finally:
+                self._syncing_squad_selection = False
+        if hasattr(self, 'var_squad_hid'):
+            self.var_squad_hid.set(s.get('hidden', False))
+        if hasattr(self, 'e_squad_cnt') and self.e_squad_cnt.winfo_exists():
             self.e_squad_cnt.delete(0, tk.END)
             self.e_squad_cnt.insert(0, str(s['num']))
-            vname = s['custom_name'] if s['custom_name'] else self.defs['veh'].get(s['veh'], "Unknown")
+        if hasattr(self, 'cb_veh') and self.cb_veh.winfo_exists():
+            vname = s.get('custom_name') if s.get('custom_name') else self.defs['veh'].get(s['veh'], "Unknown")
             self.cb_veh.set(f"{s['veh']} - {vname}")
+        self._squad_control_owner = s['owner']
+        if hasattr(self, 'btn_squad_fac') and self.btn_squad_fac.winfo_exists():
             f = s['owner']
             self.btn_squad_fac.config(text=f"{f} ({FACTIONS[f][0]})", fg=FACTIONS[f][1] if FACTIONS[f][1] else "white")
+        if redraw:
+            self.redraw_cells(previous_cell, selected_cell)
 
+    def on_squad_select(self, evt):
+        if getattr(self, '_syncing_squad_selection', False):
+            return
+        sel = self.lb_squads.curselection()
+        if sel:
+            self.select_squad_index(sel[0])
         else:
-            self.current_squad_index = -1
-            selected_cell = None
-        
-        self.redraw_cells(previous_cell, selected_cell)
+            self.deselect_squad()
+
+    def delete_selected_squad(self):
+        idx = self.current_squad_index
+        if idx == -1 and hasattr(self, 'lb_squads') and self.lb_squads.winfo_exists():
+            sel = self.lb_squads.curselection()
+            if sel:
+                idx = sel[0]
+        if idx < 0 or idx >= len(self.squads):
+            return
+        cell = self.get_squad_cell(idx)
+        self.push_undo_snapshot()
+        self.squads.pop(idx)
+        self.current_squad_index = -1
+        self._drag_squad_idx = -1
+        self.invalidate_render_indexes()
+        self.refresh_squad_list(redraw=False)
+        self.redraw_cells(cell)
+        self.dirty = True
 
     def refresh_squad_list(self, redraw=True):
         if not hasattr(self, 'lb_squads') or not self.lb_squads.winfo_exists(): return
         self.lb_squads.delete(0, tk.END)
         for i, s in enumerate(self.squads):
-            vname = s['custom_name'] if s['custom_name'] else self.defs['veh'].get(s['veh'], "Unknown")
+            vname = s.get('custom_name') if s.get('custom_name') else self.defs['veh'].get(s['veh'], "Unknown")
             faction_name = self.get_faction_display_name(s['owner'])
             hidden_tag = " (Hidden)" if s.get('hidden', False) else ""
-            txt = f"{i}: {faction_name} (ID:{s['owner']}), {vname} (ID:{s['veh']}), Num: {s['num']}{hidden_tag}"
+            pos_tag = f"@ {s['x']},{s['y']}" if self.map_cell_is_valid(s) else "[UNPLACED]"
+            txt = f"{i}: {pos_tag} {faction_name} ID:{s['owner']} | {vname} ID:{s['veh']} | Num:{s['num']}{hidden_tag}"
             self.lb_squads.insert(tk.END, txt)
-
             color = FACTION_TEXT_COLORS.get(s['owner'], "#FFFFFF")
             self.lb_squads.itemconfig(i, {'fg': color})
-            
             if i == self.current_squad_index:
                 self.lb_squads.selection_set(i)
                 self.lb_squads.activate(i)
-
         if redraw:
             self.draw_grid()
 
     def build_host_ui(self):
         p = self.panels['HOST']
         for w in p.winfo_children(): w.destroy()
+        source_host = self.current_host_data
+        if 0 <= self.current_host_index < len(self.host_stations):
+            source_host = self.host_stations[self.current_host_index]
 
-        tk.Label(p, text="HOST STATION PLACER", bg="#FFD700", fg="black", font=("bold", 12)).pack(fill=tk.X, pady=(10,5))
+        tk.Label(p, text="HOST STATION PLACER", bg="#FFD700", fg="black", font=("bold", 12)).pack(fill=tk.X, pady=(10, 6))
 
-        # Faction
-        f_fac = tk.Frame(p, bg="#1a1a1a"); f_fac.pack(fill=tk.X, pady=2)
-        tk.Label(f_fac, text="Owner:", fg="white", bg="#1a1a1a").pack(side=tk.LEFT, padx=5)
+        editor = tk.Frame(p, bg="#1a1a1a")
+        editor.pack(fill=tk.X, padx=12, pady=(2, 6))
 
+        f_fac = tk.Frame(editor, bg="#1a1a1a"); f_fac.pack(fill=tk.X, pady=3)
+        tk.Label(f_fac, text="Owner:", fg="white", bg="#1a1a1a", width=11, anchor="e").pack(side=tk.LEFT, padx=(0, 6))
         self.btn_host_fac = tk.Menubutton(f_fac, text="", bg="#333", fg="white", relief="raised", width=18)
-        self.btn_host_fac.pack(side=tk.LEFT, padx=5)
+        self.btn_host_fac.pack(side=tk.LEFT)
+        self._host_control_owner = source_host.get('owner', 1)
 
         def set_host_fac(f):
-            if self.current_host_index != -1:
+            self._host_control_owner = f
+            if self.current_host_index != -1 and self.current_host_index < len(self.host_stations):
                 cell = self.get_host_cell(self.current_host_index)
                 if self.host_stations[self.current_host_index]['owner'] != f:
                     self.push_undo_snapshot()
-                self.host_stations[self.current_host_index]['owner'] = f
-                self.refresh_host_list(redraw=False)
-                self.redraw_cells(cell)
+                    self.host_stations[self.current_host_index]['owner'] = f
+                    self.refresh_host_list(redraw=False)
+                    self.redraw_cells(cell)
             else:
                 self.current_host_data['owner'] = f
-            
             self.btn_host_fac.config(text=self.format_player_owner_value(f), fg=FACTIONS[f][1] if FACTIONS[f][1] else "white")
 
         menu = tk.Menu(self.btn_host_fac, tearoff=0)
         self.btn_host_fac.configure(menu=menu)
         for i in range(1, 8):
             menu.add_command(label=self.format_player_owner_value(i), command=lambda x=i: set_host_fac(x))
-        
-        curr = self.current_host_data['owner']
-        self.btn_host_fac.config(text=self.format_player_owner_value(curr), fg=FACTIONS[curr][1] if FACTIONS[curr][1] else "white")
+        set_host_fac(self._host_control_owner)
 
         def set_player_owner(new_owner):
             old_owner = getattr(self, 'player_owner', 1)
@@ -1454,215 +1549,269 @@ class UIMixin:
                     fg=FACTIONS[self.player_owner][1] if FACTIONS[self.player_owner][1] else "white"
                 )
 
-        # Vehicle Type
-        f_veh = tk.Frame(p, bg="#1a1a1a"); f_veh.pack(fill=tk.X, pady=2)
-        tk.Label(f_veh, text="Station Type:", fg="white", bg="#1a1a1a").pack(side=tk.LEFT, padx=5)
+        f_veh = tk.Frame(editor, bg="#1a1a1a"); f_veh.pack(fill=tk.X, pady=3)
+        tk.Label(f_veh, text="Station:", fg="white", bg="#1a1a1a", width=11, anchor="e").pack(side=tk.LEFT, padx=(0, 6))
+        self.cb_host = ttk.Combobox(f_veh, values=self.definition_combo_values('host'), width=29)
+        self.cb_host.pack(side=tk.LEFT)
+        curr_v = source_host['veh']
+        curr_name = source_host.get('custom_name') or self.defs['host'].get(curr_v, "Unknown")
+        self.cb_host.set(f"{curr_v} - {curr_name}")
 
-        host_list = []
-        sorted_hosts = sorted(self.defs['host'].items())
-        for vid, name in sorted_hosts:
-            host_list.append(f"{vid} - {name}")
-
-        self.cb_host = ttk.Combobox(f_veh, values=host_list, width=23)
-        self.cb_host.pack(side=tk.LEFT, padx=5)
-        
-        curr_v = self.current_host_data['veh']
-        self.cb_host.set(f"{curr_v} - {self.defs['host'].get(curr_v, 'Unknown')}")
-
-        def on_host_change(ev):
-            if self.current_host_index != -1:
+        def on_host_change(ev=None):
+            new_veh, new_name = self.parse_definition_entry('host', self.cb_host.get(), 56, "Custom_Host")
+            if self.current_host_index != -1 and self.current_host_index < len(self.host_stations):
                 cell = self.get_host_cell(self.current_host_index)
-                val = self.cb_host.get().strip()
-                match = re.match(r'^(\d+)\s*-\s*(.*)$', val)
-                old_veh = self.host_stations[self.current_host_index]['veh']
-                old_name = self.host_stations[self.current_host_index]['custom_name']
-                if match:
-                    new_veh = int(match.group(1))
-                    new_name = match.group(2).strip() if match.group(2) else old_name
-                    if new_veh != old_veh or new_name != old_name:
-                        self.push_undo_snapshot()
-                    self.host_stations[self.current_host_index]['veh'] = new_veh
-                    if match.group(2): self.host_stations[self.current_host_index]['custom_name'] = new_name
-                else:
-                    try: 
-                        new_veh = int(val)
-                        if new_veh != old_veh or old_name != "Custom_Host":
-                            self.push_undo_snapshot()
-                        self.host_stations[self.current_host_index]['veh'] = new_veh
-                        self.host_stations[self.current_host_index]['custom_name'] = "Custom_Host"
-                    except: pass
-                self.refresh_host_list(redraw=False)
-                self.redraw_cells(cell)
-        self.cb_host.bind("<<ComboboxSelected>>", on_host_change)
-        self.cb_host.bind("<KeyRelease>", on_host_change)
-
-        tk.Label(p, text="To customize: Type 'ID - Name' directly above", fg="#aaa", bg="#1a1a1a", font=("Arial", 8, "italic")).pack(anchor=tk.W, padx=5, pady=(0,5))
-
-        # Energy & Altitude
-        f_stats = tk.Frame(p, bg="#1a1a1a"); f_stats.pack(fill=tk.X, pady=2)
-
-        tk.Label(f_stats, text="Energy:", fg="white", bg="#1a1a1a").grid(row=0, column=0, padx=5, sticky="e")
-        self.e_host_en = tk.Entry(f_stats, width=10)
-        self.e_host_en.grid(row=0, column=1, padx=5, sticky="w")
-        self.e_host_en.insert(0, str(self.current_host_data['energy']))
-
-        self.cb_host_energy_preset = ttk.Combobox(f_stats, values=self.HOST_ENERGY_PRESET_VALUES, state="readonly", width=10)
-        self.cb_host_energy_preset.grid(row=0, column=2, padx=5, sticky="w")
-
-        tk.Label(f_stats, text="Altitude (Y):", fg="white", bg="#1a1a1a").grid(row=1, column=0, padx=5, pady=(4, 0), sticky="e")
-        self.e_host_y = tk.Entry(f_stats, width=6)
-        self.e_host_y.grid(row=1, column=1, padx=5, pady=(4, 0), sticky="w")
-        self.e_host_y.insert(0, str(self.current_host_data['pos_y']))
-
-        tk.Label(f_stats, text="(Default: -330)", fg="#888", bg="#1a1a1a", font=("Arial", 8)).grid(row=1, column=2, padx=5, pady=(4, 0), sticky="w")
-
-        def upd_host_stats(ev=None):
-            if self.current_host_index != -1:
-                try:
-                    cell = self.get_host_cell(self.current_host_index)
-                    new_energy = int(self.e_host_en.get())
-                    new_pos_y = int(self.e_host_y.get())
-                    curr = self.host_stations[self.current_host_index]
-                    if curr['energy'] != new_energy or curr['pos_y'] != new_pos_y:
-                        self.push_undo_snapshot()
-                    self.host_stations[self.current_host_index]['energy'] = new_energy
-                    self.host_stations[self.current_host_index]['pos_y'] = new_pos_y
+                curr = self.host_stations[self.current_host_index]
+                if curr['veh'] != new_veh or curr.get('custom_name') != new_name:
+                    self.push_undo_snapshot()
+                    curr['veh'] = new_veh
+                    curr['custom_name'] = new_name
                     self.refresh_host_list(redraw=False)
                     self.redraw_cells(cell)
-                    self.update_host_energy_controls(new_energy)
-                except: pass
             else:
-                try:
-                    new_energy = int(self.e_host_en.get())
-                    self.current_host_data['energy'] = new_energy
-                    self.current_host_data['pos_y'] = int(self.e_host_y.get())
-                    self.update_host_energy_controls(new_energy)
-                except: pass
+                self.current_host_data['veh'] = new_veh
+                self.current_host_data['custom_name'] = new_name
+
+        self.cb_host.bind("<<ComboboxSelected>>", on_host_change)
+        self.cb_host.bind("<Return>", on_host_change)
+        tk.Label(editor, text="Custom format: ID - Name", fg="#aaa", bg="#1a1a1a", font=("Arial", 8, "italic")).pack(anchor=tk.W, padx=93, pady=(0, 5))
+
+        f_stats = tk.Frame(editor, bg="#1a1a1a"); f_stats.pack(fill=tk.X, pady=3)
+        tk.Label(f_stats, text="Energy:", fg="white", bg="#1a1a1a", width=11, anchor="e").grid(row=0, column=0, padx=(0, 6), sticky="e")
+        self.e_host_en = tk.Entry(f_stats, width=10)
+        self.e_host_en.grid(row=0, column=1, sticky="w")
+        self.e_host_en.insert(0, str(source_host['energy']))
+        self.cb_host_energy_preset = ttk.Combobox(f_stats, values=self.HOST_ENERGY_PRESET_VALUES, state="readonly", width=12)
+        self.cb_host_energy_preset.grid(row=0, column=2, padx=(8, 0), sticky="w")
+
+        tk.Label(f_stats, text="Altitude:", fg="white", bg="#1a1a1a", width=11, anchor="e").grid(row=1, column=0, padx=(0, 6), pady=(4, 0), sticky="e")
+        self.e_host_y = tk.Entry(f_stats, width=10)
+        self.e_host_y.grid(row=1, column=1, pady=(4, 0), sticky="w")
+        self.e_host_y.insert(0, self.format_host_altitude_value(source_host.get('pos_y', DEFAULT_HOST_POS_Y)))
+        tk.Label(f_stats, text="-300 Default", fg="#888", bg="#1a1a1a", font=("Arial", 8)).grid(row=1, column=2, padx=(8, 0), pady=(4, 0), sticky="w")
+
+        def upd_host_stats(ev=None):
+            try:
+                new_energy = int(self.e_host_en.get())
+                new_pos_y = self.parse_host_altitude_value(self.e_host_y.get())
+            except:
+                return
+            if self.current_host_index != -1 and self.current_host_index < len(self.host_stations):
+                cell = self.get_host_cell(self.current_host_index)
+                curr = self.host_stations[self.current_host_index]
+                if curr['energy'] != new_energy or curr['pos_y'] != new_pos_y:
+                    self.push_undo_snapshot()
+                    curr['energy'] = new_energy
+                    curr['pos_y'] = new_pos_y
+                    self.refresh_host_list(redraw=False)
+                    self.redraw_cells(cell)
+            else:
+                self.current_host_data['energy'] = new_energy
+                self.current_host_data['pos_y'] = new_pos_y
+            self.update_host_energy_controls(new_energy)
         self.e_host_en.bind("<KeyRelease>", upd_host_stats)
         self.e_host_y.bind("<KeyRelease>", upd_host_stats)
 
         def on_energy_preset_select(event=None):
-            val = self.cb_host_energy_preset.get()
-            preset_energy = self.parse_host_energy_preset_value(val)
+            preset_energy = self.parse_host_energy_preset_value(self.cb_host_energy_preset.get())
             if preset_energy is None:
                 self.update_host_energy_controls()
                 return
             self.e_host_en.delete(0, tk.END)
             self.e_host_en.insert(0, str(preset_energy))
             upd_host_stats()
-
         self.cb_host_energy_preset.bind("<<ComboboxSelected>>", on_energy_preset_select)
-        self.update_host_energy_controls(self.current_host_data['energy'])
+        self.update_host_energy_controls(source_host['energy'])
 
-        # --- HOST HIDE OPTION ---
-        f_opt = tk.Frame(p, bg="#1a1a1a"); f_opt.pack(fill=tk.X, pady=5)
-        self.var_host_hid = tk.BooleanVar(value=self.current_host_data['hidden'])
-        
+        f_opt = tk.Frame(editor, bg="#1a1a1a"); f_opt.pack(fill=tk.X, pady=(5, 2))
+        self.var_host_hid = tk.BooleanVar(value=source_host.get('hidden', False))
         def tog_host_hid():
             val = self.var_host_hid.get()
-            if self.current_host_index != -1:
+            if self.current_host_index != -1 and self.current_host_index < len(self.host_stations):
                 cell = self.get_host_cell(self.current_host_index)
                 if self.host_stations[self.current_host_index]['hidden'] != val:
                     self.push_undo_snapshot()
-                self.host_stations[self.current_host_index]['hidden'] = val
-                self.refresh_host_list(redraw=False)
-                self.redraw_cells(cell)
+                    self.host_stations[self.current_host_index]['hidden'] = val
+                    self.refresh_host_list(redraw=False)
+                    self.redraw_cells(cell)
             else:
                 self.current_host_data['hidden'] = val
+        tk.Checkbutton(f_opt, text="Hide in Briefing", variable=self.var_host_hid, command=tog_host_hid, bg="#1a1a1a", fg="white", selectcolor="#444").pack(anchor=tk.W, padx=93)
 
-        tk.Checkbutton(f_opt, text="Hide in Briefing", variable=self.var_host_hid, command=tog_host_hid, bg="#1a1a1a", fg="white", selectcolor="#444").pack(side=tk.LEFT, padx=5)
+        def add_host_to_list():
+            veh, custom_name = self.parse_definition_entry('host', self.cb_host.get(), 56, "Custom_Host")
+            try:
+                energy = int(self.e_host_en.get())
+                pos_y = self.parse_host_altitude_value(self.e_host_y.get())
+            except:
+                messagebox.showwarning("Invalid Host", "Energy must be a number. Altitude must be Default or a number.")
+                return
+            self.push_undo_snapshot()
+            self.host_stations.append({
+                'owner': self._host_control_owner,
+                'veh': veh,
+                'energy': energy,
+                'pos_y': pos_y,
+                'custom_name': custom_name,
+                'hidden': self.var_host_hid.get(),
+                'x': -1,
+                'y': -1
+            })
+            self.current_host_index = len(self.host_stations) - 1
+            self.invalidate_render_indexes()
+            self.refresh_host_list(redraw=False)
+            self.select_host_index(self.current_host_index)
+            self.dirty = True
 
-        f_player = tk.Frame(p, bg="#1a1a1a"); f_player.pack(fill=tk.X, pady=(0, 5))
-        tk.Label(f_player, text="Player faction:", fg="white", bg="#1a1a1a").pack(side=tk.LEFT, padx=5)
+        f_actions = tk.Frame(editor, bg="#1a1a1a")
+        f_actions.pack(anchor=tk.CENTER, pady=(6, 8))
+        tk.Button(f_actions, text="ADD TO LIST", command=add_host_to_list, bg="#FFD700", fg="black", font=("Arial", 9, "bold"), width=13).pack(side=tk.LEFT, padx=(0, 5))
+        tk.Button(f_actions, text="DESELECT", command=self.deselect_host, bg="#333", fg="white", font=("Arial", 9, "bold"), width=10).pack(side=tk.LEFT, padx=(0, 5))
+        tk.Button(f_actions, text="DELETE", command=self.delete_selected_host, bg="#880000", fg="white", font=("Arial", 9, "bold"), width=8).pack(side=tk.LEFT)
+
+        f_player = tk.Frame(editor, bg="#1a1a1a"); f_player.pack(fill=tk.X, pady=(2, 5))
+        tk.Label(f_player, text="Player faction:", fg="white", bg="#1a1a1a", width=11, anchor="e").pack(side=tk.LEFT, padx=(0, 6))
         self.btn_player_owner = tk.Menubutton(f_player, text="", bg="#333", fg="white", relief="raised", width=18)
-        self.btn_player_owner.pack(side=tk.LEFT, padx=5)
+        self.btn_player_owner.pack(side=tk.LEFT)
         player_menu = tk.Menu(self.btn_player_owner, tearoff=0)
         self.btn_player_owner.configure(menu=player_menu)
         for i in range(1, 8):
             player_menu.add_command(label=self.format_player_owner_value(i), command=lambda x=i: set_player_owner(x))
         set_player_owner(getattr(self, 'player_owner', 1))
 
-        f_list = tk.Frame(p, bg="#1a1a1a"); f_list.pack(fill=tk.BOTH, expand=True, padx=5)
-        tk.Label(f_list, text="Placed Host Stations:", bg="#1a1a1a", fg="white").pack(anchor=tk.W)
+        f_list = tk.Frame(p, bg="#1a1a1a")
+        f_list.pack(fill=tk.BOTH, expand=True, padx=12, pady=(6, 8))
 
-        self.lb_hosts = tk.Listbox(f_list, bg="#222", fg="white", height=6,
-                                    selectbackground="#008888", selectforeground="white")
+        self.lb_hosts = tk.Listbox(f_list, bg="#222", fg="white", height=8, selectbackground="#008888", selectforeground="white")
         self.lb_hosts.pack(fill=tk.BOTH, expand=True)
         self.lb_hosts.bind('<<ListboxSelect>>', self.on_host_select)
-
-        def delete_selected_host():
-            sel = self.lb_hosts.curselection()
-            if not sel: return
-            idx = sel[0]
-            cell = self.get_host_cell(idx)
-            self.push_undo_snapshot()
-            self.host_stations.pop(idx)
-            self.current_host_index = -1
-            self.invalidate_render_indexes()
-            self.refresh_host_list(redraw=False)
-            self.redraw_cells(cell)
-            self.var_host_hid.set(self.current_host_data['hidden'])
-
-        tk.Button(f_list, text="[ DELETE SELECTED HOST ]", command=delete_selected_host, bg="#880000", fg="white", font=("Arial", 9, "bold")).pack(fill=tk.X, pady=5)
         self.refresh_host_list()
 
-    def on_host_select(self, evt):
+    def capture_host_controls_as_new_config(self):
+        if hasattr(self, 'cb_host') and self.cb_host.winfo_exists():
+            veh, custom_name = self.parse_definition_entry('host', self.cb_host.get(), 56, "Custom_Host")
+            self.current_host_data['veh'] = veh
+            self.current_host_data['custom_name'] = custom_name
+        if hasattr(self, 'e_host_en') and self.e_host_en.winfo_exists():
+            try:
+                self.current_host_data['energy'] = int(self.e_host_en.get())
+            except:
+                pass
+        if hasattr(self, 'e_host_y') and self.e_host_y.winfo_exists():
+            try:
+                self.current_host_data['pos_y'] = self.parse_host_altitude_value(self.e_host_y.get())
+            except:
+                pass
+        self.current_host_data['owner'] = getattr(self, '_host_control_owner', self.current_host_data.get('owner', 1))
+        if hasattr(self, 'var_host_hid'):
+            self.current_host_data['hidden'] = self.var_host_hid.get()
+
+    def deselect_host(self):
         previous_cell = self.get_host_cell(self.current_host_index)
-        sel = self.lb_hosts.curselection()
-        if sel:
-            idx = sel[0]
-            self.current_host_index = idx
-            h = self.host_stations[idx]
-            selected_cell = self.get_host_cell(idx)
+        self.capture_host_controls_as_new_config()
+        self.current_host_index = -1
+        self._drag_host_idx = -1
+        if hasattr(self, 'lb_hosts') and self.lb_hosts.winfo_exists():
+            self._syncing_host_selection = True
+            try:
+                self.lb_hosts.selection_clear(0, tk.END)
+            finally:
+                self._syncing_host_selection = False
+        self.redraw_cells(previous_cell)
 
-            self.var_host_hid.set(h['hidden'])
-            
+    def select_host_index(self, idx, redraw=True):
+        if idx < 0 or idx >= len(self.host_stations):
+            return
+        previous_cell = self.get_host_cell(self.current_host_index)
+        self.current_host_index = idx
+        h = self.host_stations[idx]
+        selected_cell = self.get_host_cell(idx)
+        self.current_host_data = {
+            'owner': h['owner'],
+            'veh': h['veh'],
+            'energy': h['energy'],
+            'pos_y': h.get('pos_y', DEFAULT_HOST_POS_Y),
+            'custom_name': h.get('custom_name'),
+            'hidden': h.get('hidden', False)
+        }
+        if hasattr(self, 'lb_hosts') and self.lb_hosts.winfo_exists():
+            self._syncing_host_selection = True
+            try:
+                self.lb_hosts.selection_clear(0, tk.END)
+                self.lb_hosts.selection_set(idx)
+                self.lb_hosts.activate(idx)
+                self.lb_hosts.see(idx)
+            finally:
+                self._syncing_host_selection = False
+        if hasattr(self, 'var_host_hid'):
+            self.var_host_hid.set(h.get('hidden', False))
+        if hasattr(self, 'e_host_en') and self.e_host_en.winfo_exists():
             self.e_host_en.delete(0, tk.END); self.e_host_en.insert(0, str(h['energy']))
-            self.e_host_y.delete(0, tk.END); self.e_host_y.insert(0, str(h['pos_y']))
-            self.update_host_energy_controls(h['energy'])
-
-            vname = h['custom_name'] if h['custom_name'] else self.defs['host'].get(h['veh'], "Unknown")
+        if hasattr(self, 'e_host_y') and self.e_host_y.winfo_exists():
+            self.e_host_y.delete(0, tk.END); self.e_host_y.insert(0, self.format_host_altitude_value(h.get('pos_y', DEFAULT_HOST_POS_Y)))
+        if hasattr(self, 'cb_host') and self.cb_host.winfo_exists():
+            vname = h.get('custom_name') if h.get('custom_name') else self.defs['host'].get(h['veh'], "Unknown")
             self.cb_host.set(f"{h['veh']} - {vname}")
-
+        self._host_control_owner = h['owner']
+        if hasattr(self, 'btn_host_fac') and self.btn_host_fac.winfo_exists():
             f = h['owner']
             self.btn_host_fac.config(text=self.format_player_owner_value(f), fg=FACTIONS[f][1] if FACTIONS[f][1] else "white")
+        self.update_host_energy_controls(h['energy'])
+        if redraw:
+            self.redraw_cells(previous_cell, selected_cell)
 
+    def on_host_select(self, evt):
+        if getattr(self, '_syncing_host_selection', False):
+            return
+        sel = self.lb_hosts.curselection()
+        if sel:
+            self.select_host_index(sel[0])
         else:
-            self.current_host_index = -1
-            selected_cell = None
-            self.update_host_energy_controls(self.current_host_data['energy'])
-        self.redraw_cells(previous_cell, selected_cell)
+            self.deselect_host()
+
+    def delete_selected_host(self):
+        idx = self.current_host_index
+        if idx == -1 and hasattr(self, 'lb_hosts') and self.lb_hosts.winfo_exists():
+            sel = self.lb_hosts.curselection()
+            if sel:
+                idx = sel[0]
+        if idx < 0 or idx >= len(self.host_stations):
+            return
+        cell = self.get_host_cell(idx)
+        self.push_undo_snapshot()
+        self.host_stations.pop(idx)
+        self.current_host_index = -1
+        self._drag_host_idx = -1
+        self.invalidate_render_indexes()
+        self.refresh_host_list(redraw=False)
+        self.redraw_cells(cell)
+        self.dirty = True
 
     def refresh_host_list(self, redraw=True):
         if not hasattr(self, 'lb_hosts') or not self.lb_hosts.winfo_exists(): return
         self.lb_hosts.delete(0, tk.END)
         player_index = -1
         for idx, host in enumerate(self.host_stations):
-            if host.get('owner') == getattr(self, 'player_owner', 1):
+            if self.map_cell_is_valid(host) and host.get('owner') == getattr(self, 'player_owner', 1):
                 player_index = idx
                 break
         for i, h in enumerate(self.host_stations):
-            vname = h['custom_name']
-            if not vname: vname = self.defs['host'].get(h['veh'], "Unknown")
-
+            vname = h.get('custom_name') or self.defs['host'].get(h['veh'], "Unknown")
             faction_name = self.get_faction_display_name(h['owner'])
             hidden_tag = " (Hidden)" if h.get('hidden', False) else ""
             player_tag = " [PLAYER]" if i == player_index else ""
+            pos_tag = f"@ {h['x']},{h['y']}" if self.map_cell_is_valid(h) else "[UNPLACED]"
             txt = (
-                f"{i}:{player_tag} {faction_name} (ID:{h['owner']}), "
-                f"{vname} (ID:{h['veh']}), "
-                f"HP: {h['energy']}, Altitude (Y): {h.get('pos_y', -330)}"
+                f"{i}:{player_tag} {pos_tag} {faction_name} ID:{h['owner']} | "
+                f"{vname} ID:{h['veh']} | HP:{h['energy']}"
                 f"{hidden_tag}"
             )
             self.lb_hosts.insert(tk.END, txt)
-
             color = FACTION_TEXT_COLORS.get(h['owner'], "#FFFFFF")
             self.lb_hosts.itemconfig(i, {'fg': color})
-            
             if i == self.current_host_index:
                 self.lb_hosts.selection_set(i)
                 self.lb_hosts.activate(i)
-
         if redraw:
             self.draw_grid()
 
@@ -1692,7 +1841,7 @@ class UIMixin:
         tk.Label(f_cust, text="Custom ID:", bg="#1a1a1a", fg="#aaa").pack(side=tk.LEFT, padx=5)
         e_cust = tk.Entry(f_cust, width=5); e_cust.pack(side=tk.LEFT)
 
-        tk.Label(f_cust, text="Name:", fg="#aaa", bg="#1a1a1a").pack(side=tk.LEFT, padx=5)
+        tk.Label(f_cust, text="Custom Name:", fg="#aaa", bg="#1a1a1a").pack(side=tk.LEFT, padx=5)
         e_name = tk.Entry(f_cust, width=8); e_name.pack(side=tk.LEFT)
 
         def add_cust_tech(kind):
@@ -1714,8 +1863,9 @@ class UIMixin:
                     lst.append(vid)
                 self.draw_tech_list()
             except: pass
-        tk.Button(f_cust, text="+ VEH", command=lambda: add_cust_tech('veh'), bg="#444", fg="white", font=("Arial",7)).pack(side=tk.LEFT, padx=2)
-        tk.Button(f_cust, text="+ BLG", command=lambda: add_cust_tech('blg'), bg="#444", fg="white", font=("Arial",7)).pack(side=tk.LEFT, padx=2)
+        f_cust_btns = tk.Frame(p, bg="#1a1a1a"); f_cust_btns.pack(fill=tk.X, pady=(0, 4))
+        tk.Button(f_cust_btns, text="Add Custom Vehicle", command=lambda: add_cust_tech('veh'), bg="#444", fg="white", font=("Arial", 8), width=18).pack(side=tk.LEFT, padx=(5, 4))
+        tk.Button(f_cust_btns, text="Add Custom Building", command=lambda: add_cust_tech('blg'), bg="#444", fg="white", font=("Arial", 8), width=19).pack(side=tk.LEFT, padx=4)
 
         self.cv_tech = tk.Canvas(p, bg="#222", highlightthickness=0)
         self.sb_tech = tk.Scrollbar(

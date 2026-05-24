@@ -2,7 +2,7 @@
   "0a": ["energy"],
   "0b": ["energy", "flak"],
   "0c": ["energy"],
-  "0d": ["energy"],
+  "0d": ["flak"],
   "0e": ["energy+", "energy"],
   "0f": ["gem"],
   "01": ["energy+"],

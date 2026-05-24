@@ -61,14 +61,7 @@ class SektorEditor(
         self.zoom_m_step = 8
         self.mode = "TYPE"
         self.clear_view = False
-        self.left_panel_width = 460
-        self.left_panel_min_width = 260
-        self.left_panel_max_width = 1200
-        self.min_map_area_width = 700
-        self.left_resize_handle_width = 10
-        self._left_resize_start_x = 0
-        self._left_resize_start_width = self.left_panel_width
-        self._left_resizing = False
+        self.left_panel_width = 440
         self._palette_resize_refresh_pending = False
         self._map_layout_refresh_pending = False
         self.space_pan_active = False
@@ -119,7 +112,7 @@ class SektorEditor(
             'owner': 1,
             'veh': 56, 
             'energy': 500000,
-            'pos_y': -330, 
+            'pos_y': DEFAULT_HOST_POS_Y,
             'custom_name': None,
             'hidden': False 
         }
