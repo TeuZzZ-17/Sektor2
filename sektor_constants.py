@@ -6,7 +6,7 @@ DEFAULT_HGT = 0x7F
 DEFAULT_HOST_POS_Y = -300
 DEFAULT_HOST_RELOAD_CONST = 500000
 DEFAULT_HOST_VIEWANGLE = 12
-DEFAULT_SCRIPT_CONTENT = "include data:scripts/startup2.scr"
+DEFAULT_SCRIPT_CONTENT = ";include data:scripts/startup2.scr"
 MAX_SPECIAL_SLOTS = 10
 
 # Height Constraints (+/- 30 from 0x7F)

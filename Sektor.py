@@ -156,7 +156,7 @@ class SektorEditor(
         self.sel = {'type':'00', 'own':1, 'hgt':DEFAULT_HGT, 'blg':'00'}
         self.cache = {}
         self.defs = {'veh':{}, 'blg':{}, 'host':{}, 'weapon':{}}
-        self.building_overlays = {}
+        self.building_configs = {}
         self.sky_previews = {}
 
         # 4. Boot Sequence

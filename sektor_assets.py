@@ -183,7 +183,7 @@ class AssetMixin:
             self.load_icon("custom_building.png", "custom_building", "#FF0000", "BLG\nGHOST")
 
         self.load_icon("custom.png", "custom_mod", "#FF00FF", "GHOST")
-        self.load_icon("gate.png", "gate", "#00FFFF", "GATE")
+        self.load_icon("beamgate.png", "gate", "#00FFFF", "GATE")
         self.load_icon("key.png", "key", "#FFFF00", "KEY")
         self.load_icon("superitem.png", "item", "#FF00FF", "ITEM")
         self.load_icon("superitem_key.png", "item_key", "#FF9900", "KEY")
@@ -247,7 +247,7 @@ class AssetMixin:
         self.load_sky_list()
         self.load_standard_icons(include_custom_tile_icons=include_custom_tile_icons)
         self.load_building_overlay_icons()
-        self.load_building_overlays()
+        self.load_building_configs()
 
     def load_assets(self):
         self.load_asset_catalogs()
@@ -264,22 +264,65 @@ class AssetMixin:
         self.update_window_title()
 
     def load_building_overlay_icons(self):
-        self.ensure_asset_dir(os.path.join("buildings", "buildings_icons"))
+        self.ensure_asset_dir("icons")
 
-        for filename, path in self.iter_asset_files(os.path.join("buildings", "buildings_icons")):
+        for filename, path in self.iter_asset_files("icons"):
             key = os.path.splitext(filename)[0].lower()
             try:
                 self.assets[f"building_overlay_{key}"] = Image.open(path)
             except:
                 pass
 
-    def load_building_overlays(self):
+    def normalize_building_id(self, bid):
+        if isinstance(bid, int):
+            return f"{max(0, min(255, bid)):02x}"
+        text = str(bid).strip().lower()
+        try:
+            value = int(text, 16)
+            if 0 <= value <= 255:
+                return f"{value:02x}"
+        except:
+            pass
+        return text
+
+    def normalize_building_config(self, value):
+        config = {"icons": [], "hidden": False}
+
+        if isinstance(value, list):
+            raw_icons = value
+        elif isinstance(value, dict):
+            name = str(value.get("name", "")).strip()
+            if name:
+                config["name"] = name
+            config["hidden"] = bool(value.get("hidden", False))
+            raw_icons = value.get("icons", [])
+        else:
+            return config
+
+        if not isinstance(raw_icons, list):
+            raw_icons = []
+
+        icons = []
+        for icon in raw_icons:
+            if not isinstance(icon, str):
+                continue
+            clean_icon = icon.strip().lower()
+            if not clean_icon:
+                continue
+            if clean_icon == "hidden":
+                config["hidden"] = True
+                continue
+            icons.append(clean_icon)
+
+        config["icons"] = icons
+        return config
+
+    def load_building_configs(self):
         candidates = [
+            os.path.join("buildings", "building_configs.json"),
             os.path.join("definitions", "building_overlays.json"),
-            os.path.join("buildings", "building_overlays.json"),
-            "building_overlays.json",
         ]
-        self.building_overlays = {}
+        self.building_configs = {}
 
         path = None
         for candidate in candidates:
@@ -289,7 +332,7 @@ class AssetMixin:
                 break
 
         if path is None:
-            path = writable_path(os.path.join("definitions", "building_overlays.json"))
+            path = writable_path(os.path.join("buildings", "building_configs.json"))
             try:
                 os.makedirs(os.path.dirname(path), exist_ok=True)
                 with open(path, "w", encoding="utf-8") as f:
@@ -304,24 +347,40 @@ class AssetMixin:
                 data = json.load(f)
         except Exception as e:
             try:
-                messagebox.showwarning("Building Overlays", f"Invalid building_overlays.json:\n{e}")
+                messagebox.showwarning("Building Configs", f"Invalid building config file:\n{e}")
             except:
                 pass
             return
 
         if not isinstance(data, dict):
             try:
-                messagebox.showwarning("Building Overlays", "building_overlays.json must contain an object.")
+                messagebox.showwarning("Building Configs", "building_configs.json must contain an object.")
             except:
                 pass
             return
 
-        for bid, icons in data.items():
-            if not isinstance(icons, list):
+        for bid, value in data.items():
+            key = self.normalize_building_id(bid)
+            if not key:
                 continue
-            clean_icons = [str(icon).lower() for icon in icons if isinstance(icon, str)]
-            if clean_icons:
-                self.building_overlays[str(bid).lower()] = clean_icons
+            config = self.normalize_building_config(value)
+            if config.get("name") or config.get("icons") or config.get("hidden"):
+                self.building_configs[key] = config
+
+    def get_building_config(self, bid):
+        return getattr(self, "building_configs", {}).get(self.normalize_building_id(bid), {})
+
+    def get_building_icons(self, bid, palette=False):
+        icons = list(self.get_building_config(bid).get("icons", []))
+        if not palette:
+            icons = [icon for icon in icons if icon not in PALETTE_ONLY_BUILDING_OVERLAYS]
+        return icons
+
+    def get_building_display_name(self, bid):
+        return self.get_building_config(bid).get("name", "")
+
+    def is_building_hidden(self, bid):
+        return bool(self.get_building_config(bid).get("hidden", False))
 
     def load_definition_json(self, path):
         try:

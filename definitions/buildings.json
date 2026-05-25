@@ -13,7 +13,7 @@
   },
   {
     "id": 10,
-    "name": "Myko Power Station 1"
+    "name": "Myko Power 1"
   },
   {
     "id": 11,
@@ -21,11 +21,11 @@
   },
   {
     "id": 12,
-    "name": "Kyt Power Station 2"
+    "name": "Kyt Power 2"
   },
   {
     "id": 13,
-    "name": "Myko Flak Station"
+    "name": "Myko Flak"
   },
   {
     "id": 14,
@@ -33,15 +33,15 @@
   },
   {
     "id": 17,
-    "name": "Taer Power Station 2"
+    "name": "Taer Power 2"
   },
   {
     "id": 18,
-    "name": "Black Sect Flak Station"
+    "name": "Black Sect Flak"
   },
   {
     "id": 19,
-    "name": "Kyt Anti-Ground Flak"
+    "name": "Kyt Ground Flak"
   },
   {
     "id": 28,
@@ -49,19 +49,19 @@
   },
   {
     "id": 30,
-    "name": "Kyt Flak Station"
+    "name": "Kyt Flak"
   },
   {
     "id": 31,
-    "name": "Taer Flak Station"
+    "name": "Taer Flak"
   },
   {
     "id": 52,
-    "name": "Kyt Power Station"
+    "name": "Kyt Power"
   },
   {
     "id": 53,
-    "name": "Taer Power Station"
+    "name": "Taer Power"
   },
   {
     "id": 54,
@@ -77,15 +77,15 @@
   },
   {
     "id": 71,
-    "name": "Kyt Radar Station"
+    "name": "Kyt Radar"
   },
   {
     "id": 72,
-    "name": "Myko Radar Station"
+    "name": "Myko Radar"
   },
   {
     "id": 73,
-    "name": "Taer Radar Station"
+    "name": "Taer Radar"
   },
   {
     "id": 62,

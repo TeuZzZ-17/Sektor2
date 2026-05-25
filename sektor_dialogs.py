@@ -120,21 +120,23 @@ class DialogMixin:
         result = {"value": None}
         body = tk.Frame(win, bg="#222", padx=18, pady=16)
         body.pack(fill=tk.BOTH, expand=True)
+        content = tk.Frame(body, bg="#222")
+        content.pack(expand=True)
 
-        tk.Label(body, text="Resize Map", bg="#222", fg="white", font=("Arial", 12, "bold")).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 14))
+        tk.Label(content, text="Resize Map", bg="#222", fg="white", font=("Arial", 12, "bold")).grid(row=0, column=0, columnspan=2, pady=(0, 14))
 
-        tk.Label(body, text="W:", bg="#222", fg="#ddd").grid(row=1, column=0, sticky="e", padx=(0, 10), pady=4)
-        e_w = tk.Entry(body, width=10, bg="#111", fg="white", insertbackground="white")
+        tk.Label(content, text="W:", bg="#222", fg="#ddd").grid(row=1, column=0, sticky="e", padx=(0, 10), pady=4)
+        e_w = tk.Entry(content, width=10, bg="#111", fg="white", insertbackground="white")
         e_w.grid(row=1, column=1, sticky="w", pady=4)
         e_w.insert(0, str(default_w))
 
-        tk.Label(body, text="H:", bg="#222", fg="#ddd").grid(row=2, column=0, sticky="e", padx=(0, 10), pady=4)
-        e_h = tk.Entry(body, width=10, bg="#111", fg="white", insertbackground="white")
+        tk.Label(content, text="H:", bg="#222", fg="#ddd").grid(row=2, column=0, sticky="e", padx=(0, 10), pady=4)
+        e_h = tk.Entry(content, width=10, bg="#111", fg="white", insertbackground="white")
         e_h.grid(row=2, column=1, sticky="w", pady=4)
         e_h.insert(0, str(default_h))
 
-        buttons = tk.Frame(body, bg="#222")
-        buttons.grid(row=3, column=0, columnspan=2, sticky="e", pady=(18, 0))
+        buttons = tk.Frame(content, bg="#222")
+        buttons.grid(row=3, column=0, columnspan=2, pady=(18, 0))
 
         def close_dialog():
             try:
@@ -169,7 +171,7 @@ class DialogMixin:
         win.bind("<Escape>", close_cancel)
         win.bind("<Return>", confirm)
 
-        self.center_modal_dialog(win, 280, 190)
+        self.center_modal_dialog(win, 320, 200)
         win.grab_set()
         e_w.select_range(0, tk.END)
         e_w.focus_set()
@@ -417,6 +419,7 @@ class DialogMixin:
         self.normalize_border_heights()
         self.invalidate_render_indexes()
         self.draw_grid()
+        self.refresh_tech_panel_if_visible()
         self.dirty = True
         messagebox.showinfo("Resized", f"Map resized to {w}x{h}")
 

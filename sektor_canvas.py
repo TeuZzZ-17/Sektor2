@@ -501,17 +501,11 @@ class CanvasMixin:
         self.cv_map.create_rectangle(x1, y1, x2, y2, fill=fill_color, outline="black", tags=tag)
         self.cv_map.create_text(cx, (y1 + y2) // 2, text=label_text, fill=text_color, font=label_font, tags=tag)
 
-    def draw_building_overlays(self, x, y, sz, bid, tag, canvas=None, palette=False):
-        overlays = getattr(self, "building_overlays", {}).get(str(bid).lower(), [])
-        if not overlays:
-            return
+    def draw_building_overlay_icons(self, x, y, sz, bid, tag, canvas=None, palette=False):
         if canvas is None:
             canvas = self.cv_map
 
-        if palette:
-            icons = [icon for icon in overlays if icon != "hidden"][:4]
-        else:
-            icons = [icon for icon in overlays if icon != "hidden" and icon not in PALETTE_ONLY_BUILDING_OVERLAYS][:4]
+        icons = self.get_building_icons(bid, palette=palette)[:4]
         if not icons:
             return
         count = len(icons)
@@ -967,7 +961,7 @@ class CanvasMixin:
             img = self.get_img('blg', bid, sz)
             if img: self.cv_map.create_image(x,y,image=img, anchor=tk.NW, tags=tag)
             
-            self.draw_building_overlays(x, y, sz, bid, tag)
+            self.draw_building_overlay_icons(x, y, sz, bid, tag)
 
         # --- TEXT RENDERING PRIORITY & COLOR UNIFICATION ---
         # Rule: Show Building Text if present. Else Show Sector Text if present.
@@ -1095,6 +1089,31 @@ class CanvasMixin:
                 f"zoom={self.zoom_m} items={item_count} time={elapsed_ms:.1f} ms"
             )
 
+    def get_palette_label_font(self):
+        if not hasattr(self, "_palette_label_font"):
+            self._palette_label_font = tkfont.Font(family="Arial", size=8, weight="bold")
+        return self._palette_label_font
+
+    def fit_text_to_width(self, text, max_width, font):
+        text = str(text)
+        if font.measure(text) <= max_width:
+            return text
+
+        ellipsis = "..."
+        if font.measure(ellipsis) > max_width:
+            return ""
+
+        base = text
+        while base and font.measure(base.rstrip() + ellipsis) > max_width:
+            base = base[:-1]
+        return (base.rstrip() + ellipsis) if base.strip() else ellipsis
+
+    def get_building_palette_label(self, bid):
+        name = self.get_building_display_name(bid)
+        if name:
+            return f"{self.normalize_building_id(bid)} - {name}"
+        return str(bid)
+
     def draw_palette(self, e=None):
         if self.mode in ["HGT", "GATE", "ITEM", "TECH", "GEM", "SCRIPT", "SQUAD", "HOST"]: return
 
@@ -1109,6 +1128,8 @@ class CanvasMixin:
         sz = self.zoom_p
         if self.mode == "OWN":
             cw, ch = max(sz + 5, 135), sz + 30
+        elif self.mode == "BLG":
+            cw, ch = max(sz + 5, 185), sz + 30
         else:
             cw, ch = sz+5, sz+25
         cols = max(1, w // (cw+5))
@@ -1118,9 +1139,11 @@ class CanvasMixin:
 
         sel_val = self.sel['type'] if self.mode=="TYPE" else self.sel['own'] if self.mode=="OWN" else self.sel['hgt'] if self.mode=="HGT" else self.sel['blg']
         r, c = 0, 0
+        label_font = self.get_palette_label_font()
         for it in items:
             cell_x, y = c*cw+10, r*ch+10
-            x = cell_x + ((cw - sz) // 2 if self.mode == "OWN" else 0)
+            x = cell_x + ((cw - sz) // 2 if self.mode in ["OWN", "BLG"] else 0)
+            label_x = cell_x + (cw // 2) if self.mode == "BLG" else x + sz//2
             if it==sel_val:
                 self.cv_pal.create_rectangle(x-6, y-6, x+sz+6, y+sz+23, fill=SELECTION_SHADOW_COLOR, outline="")
                 self.cv_pal.create_rectangle(x-3, y-3, x+sz+3, y+sz+20, fill="#004A56", outline=SELECTION_COLOR, width=3)
@@ -1133,6 +1156,7 @@ class CanvasMixin:
                  lbl = f"{it:02d} - {self.OWNER_PANEL_LABELS.get(it, FACTIONS[it][0].title())}"
                  if it!=0: img = self.get_img('overlay', it, sz, 'pale')
             elif self.mode=="BLG":
+                 lbl = self.get_building_palette_label(it)
                  if it!='00': img = self.get_img('blg', it, sz)
             elif self.mode=="HGT":
                  lbl = str(it - HGT_MIN)
@@ -1141,9 +1165,10 @@ class CanvasMixin:
             if img:
                 self.cv_pal.create_image(x,y,image=img, anchor=tk.NW)
                 if self.mode=="BLG":
-                    self.draw_building_overlays(x, y, sz, it, None, canvas=self.cv_pal, palette=True)
+                    self.draw_building_overlay_icons(x, y, sz, it, None, canvas=self.cv_pal, palette=True)
             else: self.cv_pal.create_rectangle(x,y,x+sz,y+sz, fill="#222", outline="#555")
-            self.cv_pal.create_text(x+sz//2,y+sz+10, text=lbl, fill="white", font=("Arial",8,"bold"))
+            lbl = self.fit_text_to_width(lbl, cw - 8, label_font)
+            self.cv_pal.create_text(label_x,y+sz+10, text=lbl, fill="white", font=label_font)
             tag = self.cv_pal.create_rectangle(x-3,y-3,x+sz+3,y+sz+20, fill="", outline="")
             self.cv_pal.tag_bind(tag, "<Button-1>", lambda e, i=it: self.set_sel(i))
             c+=1
@@ -1165,7 +1190,7 @@ class CanvasMixin:
         elif self.mode=="BLG":
             return [
                 bid for bid in self.lists['blg']
-                if "hidden" not in getattr(self, "building_overlays", {}).get(str(bid).lower(), [])
+                if not self.is_building_hidden(bid)
             ]
         return []
 
@@ -1493,7 +1518,7 @@ class CanvasMixin:
             if str(e.type) == '4': # Click
                 idx = self.current_squad_index
                 if idx == -1 or idx >= len(self.squads):
-                    messagebox.showwarning("No Squad Selected", "Select a squad from the list, then click the map to place it.")
+                    messagebox.showwarning("No Squad Selected", "Add a squad to the list, select it, then click the map to place it.")
                     return
 
                 if self.has_squad(cx, cy, exclude_index=idx):
@@ -1530,12 +1555,13 @@ class CanvasMixin:
                             self.invalidate_render_indexes()
                             self.redraw_cells((old_x, old_y), (cx, cy))
                             self.refresh_host_list(redraw=False)
+                            self.refresh_tech_panel_if_visible()
                 return
 
             if str(e.type) == '4': # Click
                 idx = self.current_host_index
                 if idx == -1 or idx >= len(self.host_stations):
-                    messagebox.showwarning("No Host Selected", "Select a host station from the list, then click the map to place it.")
+                    messagebox.showwarning("No Host Selected", "Add a Host Station to the list, select it, then click the map to place it.")
                     return
 
                 if self.has_host(cx, cy, exclude_index=idx):
@@ -1553,6 +1579,7 @@ class CanvasMixin:
                 self._drag_host_idx = idx
                 self.redraw_cells((old_x, old_y), (cx, cy))
                 self.refresh_host_list(redraw=False)
+                self.refresh_tech_panel_if_visible()
             return
 
         # --- 5. TILE PAINTING ---

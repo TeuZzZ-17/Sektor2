@@ -57,7 +57,7 @@ class UIMixin:
         ("High", 700000),
         ("Very High", 1000000),
     ]
-    HOST_ENERGY_PRESET_VALUES = [label for label, value in HOST_ENERGY_PRESETS]
+    HOST_ENERGY_PRESET_VALUES = [label for label, value in HOST_ENERGY_PRESETS] + ["Custom"]
 
     def get_faction_display_name(self, owner):
         if owner in self.FACTION_DISPLAY_NAMES:
@@ -77,7 +77,7 @@ class UIMixin:
         for label, value in self.HOST_ENERGY_PRESETS:
             if energy == value:
                 return label
-        return ""
+        return "Custom"
 
     def parse_host_energy_preset_value(self, preset):
         for label, value in self.HOST_ENERGY_PRESETS:
@@ -104,7 +104,7 @@ class UIMixin:
                 energy = int(self.e_host_en.get())
             except:
                 energy = None
-        preset = "" if energy is None else self.host_energy_preset_for_value(energy)
+        preset = "Custom" if energy is None else self.host_energy_preset_for_value(energy)
         if hasattr(self, "cb_host_energy_preset") and self.cb_host_energy_preset.winfo_exists():
             self.cb_host_energy_preset.set(preset)
 
@@ -1378,6 +1378,8 @@ class UIMixin:
             except:
                 messagebox.showwarning("Invalid Squad", "Count must be a number.")
                 return
+            previous_cell = self.get_squad_cell(self.current_squad_index)
+            self._drag_squad_idx = -1
             self.push_undo_snapshot()
             self.squads.append({
                 'owner': self._squad_control_owner,
@@ -1389,10 +1391,12 @@ class UIMixin:
                 'x': -1,
                 'y': -1
             })
-            self.current_squad_index = len(self.squads) - 1
+            new_index = len(self.squads) - 1
+            self.current_squad_index = -1
             self.invalidate_render_indexes()
             self.refresh_squad_list(redraw=False)
-            self.select_squad_index(self.current_squad_index)
+            self.select_squad_index(new_index, redraw=False)
+            self.redraw_cells(previous_cell)
             self.dirty = True
 
         f_actions = tk.Frame(editor, bg="#1a1a1a")
@@ -1716,6 +1720,7 @@ class UIMixin:
                     self.refresh_host_list(redraw=False)
                     self.update_host_ai_controls_state()
                     self.redraw_cells(cell)
+                    self.refresh_tech_panel_if_visible()
             else:
                 self.current_host_data['owner'] = f
             self.btn_host_fac.config(text=self.format_player_owner_value(f), fg=FACTIONS[f][1] if FACTIONS[f][1] else "white")
@@ -1896,6 +1901,9 @@ class UIMixin:
             except:
                 messagebox.showwarning("Invalid Host", "Energy, Altitude, Reload Const and View Angle must be numbers.")
                 return
+            previous_cell = self.get_host_cell(self.current_host_index)
+            source_ai = copy.deepcopy(self.ensure_host_ai(self.get_active_host_data_for_ui()))
+            self._drag_host_idx = -1
             self.push_undo_snapshot()
             self.host_stations.append({
                 'owner': self._host_control_owner,
@@ -1906,14 +1914,17 @@ class UIMixin:
                 'viewangle': viewangle,
                 'custom_name': custom_name,
                 'hidden': self.var_host_hid.get(),
-                'ai': copy.deepcopy(self.ensure_host_ai(self.get_active_host_data_for_ui())),
+                'ai': source_ai,
                 'x': -1,
                 'y': -1
             })
-            self.current_host_index = len(self.host_stations) - 1
+            new_index = len(self.host_stations) - 1
+            self.current_host_index = -1
             self.invalidate_render_indexes()
             self.refresh_host_list(redraw=False)
-            self.select_host_index(self.current_host_index)
+            self.select_host_index(new_index, redraw=False)
+            self.redraw_cells(previous_cell)
+            self.refresh_tech_panel_if_visible()
             self.dirty = True
 
         f_actions = tk.Frame(editor, bg="#1a1a1a")
@@ -2059,6 +2070,7 @@ class UIMixin:
         self.invalidate_render_indexes()
         self.refresh_host_list(redraw=False)
         self.redraw_cells(cell)
+        self.refresh_tech_panel_if_visible()
         self.dirty = True
 
     def delete_all_hosts(self):
@@ -2074,6 +2086,7 @@ class UIMixin:
         self.refresh_host_list(redraw=False)
         self.update_host_ai_controls_state()
         self.draw_grid()
+        self.refresh_tech_panel_if_visible()
         self.dirty = True
 
     def refresh_host_list(self, redraw=True):
@@ -2115,9 +2128,34 @@ class UIMixin:
             self.draw_grid()
         self.update_host_ai_controls_state()
 
+    def faction_has_placed_host(self, faction_id):
+        for host in self.host_stations:
+            if host.get('owner') == faction_id and self.map_cell_is_valid(host):
+                return True
+        return False
+
+    def can_edit_current_tech_faction(self):
+        return self.faction_has_placed_host(self.curr_tech_faction)
+
+    def set_tech_edit_controls_enabled(self, enabled):
+        state = tk.NORMAL if enabled else tk.DISABLED
+        for widget in getattr(self, "tech_edit_widgets", []):
+            try:
+                if widget.winfo_exists():
+                    widget.config(state=state)
+            except:
+                pass
+
+    def refresh_tech_panel_if_visible(self):
+        if getattr(self, "mode", None) != "TECH":
+            return
+        if hasattr(self, "cv_tech") and self.cv_tech.winfo_exists():
+            self.draw_tech_list()
+
     def build_tech_ui(self):
         p = self.panels['TECH']
         for w in p.winfo_children(): w.destroy()
+        self.tech_edit_widgets = []
         h = tk.Frame(p, bg="#1a1a1a", height=40); h.pack(fill=tk.X)
         h_inner = tk.Frame(h, bg="#1a1a1a")
         h_inner.pack(anchor=tk.W)
@@ -2143,8 +2181,12 @@ class UIMixin:
 
         tk.Label(f_cust, text="Custom Name:", fg="#aaa", bg="#1a1a1a").pack(side=tk.LEFT, padx=5)
         e_name = tk.Entry(f_cust, width=8); e_name.pack(side=tk.LEFT)
+        self.tech_edit_widgets.extend([e_cust, e_name])
 
         def add_cust_tech(kind):
+            if not self.can_edit_current_tech_faction():
+                self.draw_tech_list()
+                return
             try:
                 vid = int(e_cust.get())
                 cname = e_name.get().strip()
@@ -2164,8 +2206,11 @@ class UIMixin:
                 self.draw_tech_list()
             except: pass
         f_cust_btns = tk.Frame(p, bg="#1a1a1a"); f_cust_btns.pack(fill=tk.X, pady=(0, 4))
-        tk.Button(f_cust_btns, text="Add Custom Vehicle", command=lambda: add_cust_tech('veh'), bg="#444", fg="white", font=("Arial", 8), width=18).pack(side=tk.LEFT, padx=(5, 4))
-        tk.Button(f_cust_btns, text="Add Custom Building", command=lambda: add_cust_tech('blg'), bg="#444", fg="white", font=("Arial", 8), width=19).pack(side=tk.LEFT, padx=4)
+        btn_add_custom_vehicle = tk.Button(f_cust_btns, text="Add Custom Vehicle", command=lambda: add_cust_tech('veh'), bg="#444", fg="white", font=("Arial", 8), width=18)
+        btn_add_custom_vehicle.pack(side=tk.LEFT, padx=(5, 4))
+        btn_add_custom_building = tk.Button(f_cust_btns, text="Add Custom Building", command=lambda: add_cust_tech('blg'), bg="#444", fg="white", font=("Arial", 8), width=19)
+        btn_add_custom_building.pack(side=tk.LEFT, padx=4)
+        self.tech_edit_widgets.extend([btn_add_custom_vehicle, btn_add_custom_building])
 
         self.cv_tech = tk.Canvas(p, bg="#222", highlightthickness=0)
         self.sb_tech = tk.Scrollbar(
@@ -2231,6 +2276,24 @@ class UIMixin:
         width = self.cv_tech.winfo_width()
         fid = self.curr_tech_faction
 
+        if not self.faction_has_placed_host(fid):
+            self.set_tech_edit_controls_enabled(False)
+            message = "No Host Station placed for this faction.\nPlace a Host Station first to edit its Tech list."
+            text_width = max(180, width - 30)
+            self.cv_tech.create_text(
+                max(width // 2, text_width // 2),
+                52,
+                text=message,
+                fill="#CCCCCC",
+                width=text_width,
+                justify=tk.CENTER,
+                font=("Arial", 9, "bold")
+            )
+            self.cv_tech.config(scrollregion=(0, 0, max(width, TECH_ITEM_W + 20), 120))
+            return
+
+        self.set_tech_edit_controls_enabled(True)
+
         faction_color = FACTIONS[fid][1] or "#FFFFFF"
         active_bg = faction_color
         active_outline = SELECTION_COLOR
@@ -2268,6 +2331,10 @@ class UIMixin:
         return "break"
 
     def start_tech_drag(self, e, action):
+        if not self.can_edit_current_tech_faction():
+            self.draw_tech_list()
+            self._tech_drag_active = False
+            return
         self._tech_drag_active = True
         self._tech_dragging = False
         self._tech_drag_snapshot_taken = False
@@ -2300,6 +2367,8 @@ class UIMixin:
             return "break"
 
     def get_tech_hit_item(self, x, y):
+        if not self.can_edit_current_tech_faction():
+            return None
         cy = int(self.cv_tech.canvasy(y)); idx = cy // TECH_ITEM_H
         items = self.get_tech_list_items()
         if 0 <= idx < len(items):
