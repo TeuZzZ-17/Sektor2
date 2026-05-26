@@ -8,7 +8,7 @@ from sektor_constants import *
 class UIMixin:
 
     GEM_MODEL_LABELS = {
-        4: "04 - gem0",
+        4: "04 - gem0 (vehicle unlock)",
         7: "07 - gem_with_flak1",
         15: "15 - gem_weapon_power",
         16: "16 - gem_new_building",
@@ -19,7 +19,7 @@ class UIMixin:
         65: "65 - gem_more_shield",
     }
     GEM_MODEL_VALUES = [
-        "04 - gem0",
+        "04 - gem0 (vehicle unlock)",
         "07 - gem_with_flak1",
         "15 - gem_weapon_power",
         "16 - gem_new_building",
