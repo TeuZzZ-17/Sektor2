@@ -1,3 +1,5 @@
+Sektor includes a limited set of visual reference assets required for map preview/editor functionality. These assets are provided only as compatibility resources for Urban Assault/OpenUA modding and are not a standalone copy of the game. Urban Assault remains property of its respective rights holders.
+
 # Sektor 2 - Urban Assault Map Editor
 
 Sektor 2 is a map editor for Microsoft Urban Assault (1998), designed to simplify the creation and modification of custom LDF levels for UA / OpenUA / UA Source.
