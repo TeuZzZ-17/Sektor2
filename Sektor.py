@@ -95,9 +95,9 @@ class SektorEditor(
         self.gems = {i: {'x': -1, 'y': -1, 'blg': 50, 'type': 3, 'actions': [], 'hidden': False} for i in range(1, MAX_SPECIAL_SLOTS + 1)}
 
         # VISIBILITY COUNTERS
-        self.visible_gate_slots = 1
-        self.visible_item_slots = 1
-        self.visible_gem_slots = 1
+        self.visible_gate_slots = 0
+        self.visible_item_slots = 0
+        self.visible_gem_slots = 0
 
         # SQUADS SYSTEM
         self.squads = []
@@ -122,9 +122,9 @@ class SektorEditor(
         self.current_host_index = -1
         self._drag_host_idx = -1
 
-        self.current_gate_slot = 1
-        self.current_item_slot = 1
-        self.current_gem_slot = 1
+        self.current_gate_slot = 0
+        self.current_item_slot = 0
+        self.current_gem_slot = 0
 
         self.tech = {i: {'veh': [], 'blg': []} for i in range(1, 8)}
         self.custom_tech_names = {}

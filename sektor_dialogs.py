@@ -340,9 +340,9 @@ class DialogMixin:
         self.custom_tech_names = {}
         self.curr_tech_faction = 1
 
-        self.current_gate_slot = 1
-        self.current_item_slot = 1
-        self.current_gem_slot = 1
+        self.current_gate_slot = 0
+        self.current_item_slot = 0
+        self.current_gem_slot = 0
         self.current_squad_index = -1
         self.current_host_index = -1
         self._drag_squad_idx = -1

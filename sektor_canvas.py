@@ -403,6 +403,50 @@ class CanvasMixin:
             self.dirty = True
         return changed_cells
 
+
+    def find_gate_at(self, cx, cy, exclude_slot=None):
+        for i in reversed(range(1, getattr(self, "visible_gate_slots", 0) + 1)):
+            if exclude_slot is not None and i == exclude_slot:
+                continue
+            gate = self.gates[i]
+            if gate.get('x') == cx and gate.get('y') == cy:
+                return i
+        return -1
+
+    def find_gate_key_at(self, cx, cy):
+        for i in reversed(range(1, getattr(self, "visible_gate_slots", 0) + 1)):
+            gate = self.gates[i]
+            for idx, cell in enumerate(gate.get('keys', [])):
+                if cell == (cx, cy):
+                    return i, idx
+        return -1, -1
+
+    def find_item_at(self, cx, cy, exclude_slot=None):
+        for i in reversed(range(1, getattr(self, "visible_item_slots", 0) + 1)):
+            if exclude_slot is not None and i == exclude_slot:
+                continue
+            item = self.items[i]
+            if item.get('x') == cx and item.get('y') == cy:
+                return i
+        return -1
+
+    def find_item_key_at(self, cx, cy):
+        for i in reversed(range(1, getattr(self, "visible_item_slots", 0) + 1)):
+            item = self.items[i]
+            for idx, cell in enumerate(item.get('keys', [])):
+                if cell == (cx, cy):
+                    return i, idx
+        return -1, -1
+
+    def find_gem_at(self, cx, cy, exclude_slot=None):
+        for i in reversed(range(1, getattr(self, "visible_gem_slots", 0) + 1)):
+            if exclude_slot is not None and i == exclude_slot:
+                continue
+            gem = self.gems[i]
+            if gem.get('x') == cx and gem.get('y') == cy:
+                return i
+        return -1
+
     def find_squad_at(self, cx, cy, exclude_index=None):
         for i in reversed(range(len(self.squads))):
             if exclude_index is not None and i == exclude_index:
@@ -1432,11 +1476,14 @@ class CanvasMixin:
             tool = self.gate_tool if self.mode == "GATE" else self.item_tool if self.mode == "ITEM" else "GEM"
             data_list = self.gates if self.mode == "GATE" else self.items if self.mode == "ITEM" else self.gems
             current_slot = self.current_gate_slot if self.mode == "GATE" else self.current_item_slot if self.mode == "ITEM" else self.current_gem_slot
-            current_data = data_list[current_slot]
+            visible_count = self.visible_gate_slots if self.mode == "GATE" else self.visible_item_slots if self.mode == "ITEM" else self.visible_gem_slots
+            current_data = data_list.get(current_slot) if 1 <= current_slot <= visible_count else None
 
             # A. MOTION (DRAGGING)
             if str(e.type) == '6':
-                # 1. Key Dragging Logic (Always valid if dragging a key)
+                if current_data is None:
+                    return
+                # 1. Key Dragging Logic
                 if self.mode in ["GATE", "ITEM"] and self._drag_key_list is not None and self._drag_key_idx != -1:
                     if self._drag_key_idx < len(self._drag_key_list):
                         old_x, old_y = self._drag_key_list[self._drag_key_idx]
@@ -1455,36 +1502,77 @@ class CanvasMixin:
                             self._drag_key_list[self._drag_key_idx] = (cx, cy)
                             if self.mode == "ITEM":
                                 self.apply_item_key_visual(current_data, (cx, cy))
-                                self.dirty = True
+                            self.dirty = True
                             self.invalidate_render_indexes()
                             self.redraw_cells((old_x, old_y), (cx, cy))
+                            if hasattr(self, 'refresh_special_list'):
+                                self.refresh_special_list(self.mode, redraw=False)
                     return
-                
-                # 2. Main Object Dragging Logic (ONLY if NOT using KEY tool)
-                if tool != "KEY" and current_data['x'] != -1:
-                        if current_data['x'] != cx or current_data['y'] != cy:
-                             if (
-                                 not self.has_main_object(cx, cy, self.mode, current_slot) and
-                                 (self.mode not in ["GATE", "ITEM"] or (cx, cy) not in current_data['keys'])
-                             ):
-                                 ox, oy = current_data['x'], current_data['y']
-                                 old_cell = (ox, oy)
-                                 old_gem_building = current_data.get('blg') if self.mode == "GEM" else None
-                                 old_visual = self.get_special_auto_visual(self.mode, current_data)
-                                 current_data['x'], current_data['y'] = cx, cy
-                                 if self.mode in ["GATE", "ITEM"]:
-                                     self.sync_special_auto_visual(self.mode, current_data, old_cell=old_cell, old_visual=old_visual)
-                                 elif self.mode == "GEM":
-                                     self.sync_gem_building_visual(current_data, old_cell=old_cell, old_building=old_gem_building)
-                                     self.dirty = True
-                                 self.invalidate_render_indexes()
-                                 self.redraw_cells((ox, oy), (cx, cy))
+
+                # 2. Main Object Dragging Logic
+                if tool != "KEY" and current_data.get('x', -1) != -1:
+                    if current_data['x'] != cx or current_data['y'] != cy:
+                        if (
+                            not self.has_main_object(cx, cy, self.mode, current_slot) and
+                            (self.mode not in ["GATE", "ITEM"] or (cx, cy) not in current_data.get('keys', []))
+                        ):
+                            ox, oy = current_data['x'], current_data['y']
+                            old_cell = (ox, oy)
+                            old_gem_building = current_data.get('blg') if self.mode == "GEM" else None
+                            old_visual = self.get_special_auto_visual(self.mode, current_data)
+                            current_data['x'], current_data['y'] = cx, cy
+                            if self.mode in ["GATE", "ITEM"]:
+                                self.sync_special_auto_visual(self.mode, current_data, old_cell=old_cell, old_visual=old_visual)
+                            elif self.mode == "GEM":
+                                self.sync_gem_building_visual(current_data, old_cell=old_cell, old_building=old_gem_building)
+                            self.dirty = True
+                            self.invalidate_render_indexes()
+                            self.redraw_cells((ox, oy), (cx, cy))
+                            if hasattr(self, 'refresh_special_list'):
+                                self.refresh_special_list(self.mode, redraw=False)
                 return
 
-            # B. CLICK (PLACEMENT)
+            # B. CLICK (SELECTION / PLACEMENT)
             if str(e.type) == '4':
+                if self.mode == "GATE":
+                    key_slot, key_idx = self.find_gate_key_at(cx, cy)
+                    obj_slot = self.find_gate_at(cx, cy)
+                    if key_slot != -1 and (current_slot != key_slot or tool != "KEY"):
+                        self.select_special_slot("GATE", key_slot)
+                        self.gate_tool = "KEY"
+                        self._drag_key_list = self.gates[key_slot]['keys']
+                        self._drag_key_idx = key_idx
+                        return
+                    if obj_slot != -1 and obj_slot != current_slot:
+                        self.select_special_slot("GATE", obj_slot)
+                        self.gate_tool = "GATE"
+                        return
+                elif self.mode == "ITEM":
+                    key_slot, key_idx = self.find_item_key_at(cx, cy)
+                    obj_slot = self.find_item_at(cx, cy)
+                    if key_slot != -1 and (current_slot != key_slot or tool != "KEY"):
+                        self.select_special_slot("ITEM", key_slot)
+                        self.item_tool = "KEY"
+                        self._drag_key_list = self.items[key_slot]['keys']
+                        self._drag_key_idx = key_idx
+                        return
+                    if obj_slot != -1 and obj_slot != current_slot:
+                        self.select_special_slot("ITEM", obj_slot)
+                        self.item_tool = "ITEM"
+                        return
+                elif self.mode == "GEM":
+                    obj_slot = self.find_gem_at(cx, cy)
+                    if obj_slot != -1 and obj_slot != current_slot:
+                        self.select_special_slot("GEM", obj_slot)
+                        self.gem_tool = "GEM"
+                        return
+
+                if current_data is None:
+                    messagebox.showwarning("No Object Selected", f"Add a {self.mode.lower()} to the list first.")
+                    return
+
                 if (self.mode == "GATE" and tool == "KEY") or (self.mode == "ITEM" and tool == "KEY"):
-                    if (cx, cy) in current_data['keys']:
+                    if (cx, cy) in current_data.get('keys', []):
                         self._drag_key_list = current_data['keys']
                         self._drag_key_idx = current_data['keys'].index((cx, cy))
                     else:
@@ -1497,36 +1585,41 @@ class CanvasMixin:
                             else:
                                 messagebox.showwarning("Occupied", "Cannot place Key here!")
                             return
+                        self.push_undo_snapshot()
                         current_data['keys'].append((cx, cy))
                         if self.mode == "ITEM":
                             self.apply_item_key_visual(current_data, (cx, cy))
-                            self.dirty = True
+                        self.dirty = True
                         self.invalidate_render_indexes()
                         self.redraw_cells((cx, cy))
+                        if hasattr(self, 'refresh_special_list'):
+                            self.refresh_special_list(self.mode, redraw=False)
                     return
                 else:
                     target_mode = self.mode
-                    if target_mode == "GEM" and not current_data['actions']:
-                         messagebox.showwarning("Error", "Cannot place Gem without actions!\nAdd actions in the panel first.")
-                         return
+                    if target_mode == "GEM" and not current_data.get('actions'):
+                        messagebox.showwarning("Error", "Cannot place Gem without actions!\nAdd actions in the panel first.")
+                        return
                     if self.has_main_object(cx, cy, target_mode, current_slot):
                         messagebox.showwarning("Occupied", "Tile occupied!"); return
-                    if target_mode in ["GATE", "ITEM"]:
-                        if (cx, cy) in current_data['keys']:
-                            messagebox.showwarning("Error", "Cannot place Object on its own Key!"); return
+                    if target_mode in ["GATE", "ITEM"] and (cx, cy) in current_data.get('keys', []):
+                        messagebox.showwarning("Error", "Cannot place Object on its own Key!"); return
 
-                    old_x, old_y = current_data['x'], current_data['y']
+                    old_x, old_y = current_data.get('x', -1), current_data.get('y', -1)
                     old_cell = (old_x, old_y) if old_x != -1 and old_y != -1 else None
                     old_gem_building = current_data.get('blg') if target_mode == "GEM" else None
                     old_visual = self.get_special_auto_visual(target_mode, current_data)
+                    self.push_undo_snapshot()
                     current_data['x'] = cx; current_data['y'] = cy
                     if target_mode in ["GATE", "ITEM"]:
                         self.sync_special_auto_visual(target_mode, current_data, old_cell=old_cell, old_visual=old_visual)
                     elif target_mode == "GEM":
                         self.sync_gem_building_visual(current_data, old_cell=old_cell, old_building=old_gem_building)
-                        self.dirty = True
+                    self.dirty = True
                     self.invalidate_render_indexes()
                     self.redraw_cells((old_x, old_y), (cx, cy))
+                    if hasattr(self, 'refresh_special_list'):
+                        self.refresh_special_list(self.mode, redraw=False)
             return
 
         # --- 3. SQUAD HANDLING ---
@@ -1713,11 +1806,15 @@ class CanvasMixin:
                     self.clear_special_auto_visual("GATE", g)
                     g['x'] = -1; g['y'] = -1
                     self.invalidate_render_indexes()
+                    if hasattr(self, 'refresh_special_list'):
+                        self.refresh_special_list("GATE", redraw=False)
                     self.redraw_cells((cx, cy)); return
                 if (cx, cy) in g['keys']:
                     push_right_undo_once()
                     g['keys'].remove((cx, cy))
                     self.invalidate_render_indexes()
+                    if hasattr(self, 'refresh_special_list'):
+                        self.refresh_special_list("GATE", redraw=False)
                     self.redraw_cells((cx, cy)); return
         elif self.mode == "ITEM":
             for i, it in self.items.items():
@@ -1726,12 +1823,16 @@ class CanvasMixin:
                     self.clear_special_auto_visual("ITEM", it)
                     it['x'] = -1; it['y'] = -1
                     self.invalidate_render_indexes()
+                    if hasattr(self, 'refresh_special_list'):
+                        self.refresh_special_list("ITEM", redraw=False)
                     self.redraw_cells((cx, cy)); return
                 if (cx, cy) in it['keys']:
                     push_right_undo_once()
                     self.restore_item_key_visual_if_matches(it, (cx, cy))
                     it['keys'].remove((cx, cy))
                     self.invalidate_render_indexes()
+                    if hasattr(self, 'refresh_special_list'):
+                        self.refresh_special_list("ITEM", redraw=False)
                     self.redraw_cells((cx, cy)); return
         elif self.mode == "GEM":
             for i, gm in self.gems.items():
@@ -1740,6 +1841,8 @@ class CanvasMixin:
                     self.clear_gem_building_visual_if_matches(gm)
                     gm['x'] = -1; gm['y'] = -1
                     self.invalidate_render_indexes()
+                    if hasattr(self, 'refresh_special_list'):
+                        self.refresh_special_list("GEM", redraw=False)
                     self.redraw_cells((cx, cy)); return
 
     def handle_special_click(self, cx, cy, data_dict, tool_type):

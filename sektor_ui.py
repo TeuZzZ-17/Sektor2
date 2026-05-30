@@ -283,6 +283,13 @@ class UIMixin:
         self.cnt_frame = tk.Frame(self.f_left, bg="#1a1a1a")
         self.cnt_frame.pack(fill=tk.BOTH, expand=True)
         self.cv_pal = tk.Canvas(self.cnt_frame, bg="#1a1a1a", highlightthickness=0)
+        self.owner_header = tk.Label(
+            self.cnt_frame,
+            text="OWNER EDITOR (00 - 07)",
+            bg="#CC6600",
+            fg="white",
+            font=("Arial", 12, "bold")
+        )
 
         self.sb_pal = tk.Scrollbar(
             self.cnt_frame,
@@ -445,6 +452,8 @@ class UIMixin:
 
         for k, (b, c) in self.btns.items(): b.config(bg=c if k==m else "#444")
         self.cv_pal.pack_forget(); self.sb_pal.pack_forget()
+        if hasattr(self, "owner_header"):
+            self.owner_header.pack_forget()
         for p in self.panels.values(): p.pack_forget()
 
         if m in ["TYPE", "BLG"]:
@@ -473,6 +482,14 @@ class UIMixin:
             elif m == "SQUAD": self.build_squad_ui()
             elif m == "HOST": self.build_host_ui()
             self.panels[m].pack(fill=tk.BOTH, expand=True)
+        elif m == "OWN":
+            # Owner is a fixed color selector, not a scrollable/zoomable palette.
+            # Keep the orange title bar for visual consistency with Height Editor,
+            # but do not show the palette scrollbar here.
+            if hasattr(self, "owner_header"):
+                self.owner_header.pack(fill=tk.X, pady=(0, 6))
+            self.cv_pal.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            self.refresh_palette_layout(force_full=True)
         else:
             self.sb_pal.pack(side=tk.RIGHT, fill=tk.Y); self.cv_pal.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
             self.refresh_palette_layout(force_full=True)
@@ -501,15 +518,27 @@ class UIMixin:
 
     def upd_lbl(self):
         if self.mode == "GATE":
-            tgt = self.gates[self.current_gate_slot]['target']
-            self.lbl_sel.config(text=f"BEAMGATE [{self.current_gate_slot}]: TGT {tgt}")
+            slot = getattr(self, "current_gate_slot", 0)
+            if 1 <= slot <= getattr(self, "visible_gate_slots", 0):
+                tgt = self.gates[slot]['target']
+                self.lbl_sel.config(text=f"BEAMGATE [{slot}]: TGT {tgt}")
+            else:
+                self.lbl_sel.config(text="BEAMGATE EDITOR")
         elif self.mode == "ITEM":
-            mins = self.items[self.current_item_slot]['countdown'] // 60000
-            self.lbl_sel.config(text=f"BOMB [{self.current_item_slot}]: {mins}m")
+            slot = getattr(self, "current_item_slot", 0)
+            if 1 <= slot <= getattr(self, "visible_item_slots", 0):
+                mins = self.items[slot]['countdown'] // 60000
+                self.lbl_sel.config(text=f"BOMB [{slot}]: {mins}m")
+            else:
+                self.lbl_sel.config(text="BOMB EDITOR")
         elif self.mode == "GEM":
-             typ = self.gems[self.current_gem_slot]['type']
-             t_str = "PWR" if typ==1 else "SHLD" if typ==2 else "TECH"
-             self.lbl_sel.config(text=f"GEM [{self.current_gem_slot}]: {t_str}")
+             slot = getattr(self, "current_gem_slot", 0)
+             if 1 <= slot <= getattr(self, "visible_gem_slots", 0):
+                 typ = self.gems[slot]['type']
+                 t_str = "PWR" if typ==1 else "SHLD" if typ==2 else "TECH"
+                 self.lbl_sel.config(text=f"GEM [{slot}]: {t_str}")
+             else:
+                 self.lbl_sel.config(text="GEM EDITOR")
         elif self.mode == "TECH":
             fid = self.curr_tech_faction
             self.lbl_sel.config(text=f"TECH: {FACTIONS[fid][0]}")
@@ -772,58 +801,332 @@ class UIMixin:
             self.sel['hgt'] = val + HGT_MIN
         except ValueError: pass
 
+    # ------------------------------------------------------------------
+    # Special object list workflow: Beamgate / Bomb / Gem
+    # ------------------------------------------------------------------
+    def get_special_store(self, kind):
+        if kind == "GATE": return self.gates
+        if kind == "ITEM": return self.items
+        if kind == "GEM": return self.gems
+        raise ValueError(kind)
+
+    def get_special_visible_count(self, kind):
+        if kind == "GATE": return self.visible_gate_slots
+        if kind == "ITEM": return self.visible_item_slots
+        if kind == "GEM": return self.visible_gem_slots
+        return 0
+
+    def set_special_visible_count(self, kind, value):
+        value = max(0, min(MAX_SPECIAL_SLOTS, int(value)))
+        if kind == "GATE": self.visible_gate_slots = value
+        elif kind == "ITEM": self.visible_item_slots = value
+        elif kind == "GEM": self.visible_gem_slots = value
+
+    def get_current_special_slot(self, kind):
+        if kind == "GATE": return self.current_gate_slot
+        if kind == "ITEM": return self.current_item_slot
+        if kind == "GEM": return self.current_gem_slot
+        return 0
+
+    def set_current_special_slot(self, kind, slot):
+        slot = int(slot or 0)
+        if kind == "GATE": self.current_gate_slot = slot
+        elif kind == "ITEM": self.current_item_slot = slot
+        elif kind == "GEM": self.current_gem_slot = slot
+
+    def get_special_tool(self, kind):
+        if kind == "GATE": return self.gate_tool
+        if kind == "ITEM": return self.item_tool
+        if kind == "GEM": return self.gem_tool
+        return None
+
+    def set_special_tool(self, kind, tool):
+        if kind == "GATE": self.gate_tool = tool
+        elif kind == "ITEM": self.item_tool = tool
+        elif kind == "GEM": self.gem_tool = tool
+
+    def get_special_default_data(self, kind):
+        if kind == "GATE":
+            return {'active': True, 'x': -1, 'y': -1, 'keys': [], 'target': 0, 'closed_bp': 25, 'opened_bp': 26, 'hidden': False}
+        if kind == "ITEM":
+            return {'active': True, 'x': -1, 'y': -1, 'keys': [], 'countdown': 300000,
+                    'inactive_bp': 35, 'active_bp': 36, 'trigger_bp': 37, 'type': 1, 'hidden': False}
+        if kind == "GEM":
+            return {'x': -1, 'y': -1, 'blg': 50, 'type': 3, 'actions': [], 'hidden': False}
+        raise ValueError(kind)
+
+    def get_special_color(self, kind):
+        return {"GATE": "#00FFFF", "ITEM": "#FF00FF", "GEM": "#00FF00"}.get(kind, "#FFFFFF")
+
+    def get_special_display_title(self, kind):
+        return {"GATE": "BEAMGATE", "ITEM": "BOMB", "GEM": "GEM"}.get(kind, kind)
+
+    def get_special_listbox_name(self, kind):
+        return {"GATE": "lb_gates", "ITEM": "lb_items", "GEM": "lb_gems"}.get(kind, "")
+
+    def get_special_cells_for_redraw(self, kind, data):
+        cells = []
+        if not data:
+            return cells
+        cell = self.get_special_cell(data) if kind in ("GATE", "ITEM") else self.get_gem_cell(data)
+        if cell:
+            cells.append(cell)
+        if kind in ("GATE", "ITEM"):
+            cells.extend(list(data.get('keys', [])))
+        return cells
+
+    def clear_special_slot_visuals(self, kind, idx):
+        store = self.get_special_store(kind)
+        if idx not in store:
+            return []
+        data = store[idx]
+        cells = self.get_special_cells_for_redraw(kind, data)
+        if kind == "GATE":
+            self.clear_special_auto_visual("GATE", data)
+        elif kind == "ITEM":
+            self.clear_all_item_key_visuals(data)
+            self.clear_special_auto_visual("ITEM", data)
+        elif kind == "GEM":
+            self.clear_gem_building_visual_if_matches(data)
+        return cells
+
+    def get_gem_type_display_name(self, type_id):
+        return {1: "Weapon", 2: "Shield", 3: "Tech/Unlock"}.get(type_id, "Custom")
+
+    def get_special_list_label(self, kind, idx):
+        data = self.get_special_store(kind)[idx]
+        prefix = "[UNPLACED] " if not self.map_cell_is_valid(data) else ""
+        if kind == "GATE":
+            key_count = len(data.get('keys', []))
+            road = "Road" if (data.get('closed_bp'), data.get('opened_bp')) == (5, 6) else "No Road" if (data.get('closed_bp'), data.get('opened_bp')) == (25, 26) else "Custom"
+            parts = [f"{prefix}#{idx}", f"Target Level: {data.get('target', 0)}", f"Road Preset: {road}", f"Keys: {key_count}"]
+        elif kind == "ITEM":
+            key_count = len(data.get('keys', []))
+            mins = data.get('countdown', 0) / 60000.0
+            preset = "Standard" if (data.get('inactive_bp'), data.get('active_bp'), data.get('trigger_bp')) == (35, 36, 37) else "Parasite" if (data.get('inactive_bp'), data.get('active_bp'), data.get('trigger_bp')) == (68, 69, 70) else "Custom"
+            parts = [f"{prefix}#{idx}", f"Preset: {preset}", f"Countdown: {mins:.1f}m", f"Keys: {key_count}"]
+        else:
+            action_count = len(data.get('actions', []))
+            gem_type = data.get('type', 3)
+            parts = [
+                f"{prefix}#{idx}",
+                f"Building: {data.get('blg', 50)}",
+                f"Type: {gem_type} ({self.get_gem_type_display_name(gem_type)})",
+                f"Actions: {action_count}"
+            ]
+        if data.get('hidden', False):
+            parts.append("Hidden")
+        return " | ".join(parts)
+
+    def refresh_special_list(self, kind, redraw=True):
+        lb_name = self.get_special_listbox_name(kind)
+        if not lb_name or not hasattr(self, lb_name):
+            return
+        lb = getattr(self, lb_name)
+        if not lb.winfo_exists():
+            return
+        sync_name = f"_syncing_{kind.lower()}_selection"
+        setattr(self, sync_name, True)
+        try:
+            lb.delete(0, tk.END)
+            count = self.get_special_visible_count(kind)
+            current = self.get_current_special_slot(kind)
+            for idx in range(1, count + 1):
+                lb.insert(tk.END, self.get_special_list_label(kind, idx))
+                if idx == current:
+                    lb.selection_set(idx - 1)
+                    lb.activate(idx - 1)
+                    lb.see(idx - 1)
+        finally:
+            setattr(self, sync_name, False)
+        if redraw:
+            self.draw_grid()
+
+    def on_special_list_select(self, kind, event=None):
+        if getattr(self, f"_syncing_{kind.lower()}_selection", False):
+            return
+        lb = getattr(self, self.get_special_listbox_name(kind), None)
+        if not lb or not lb.winfo_exists():
+            return
+        sel = lb.curselection()
+        if not sel:
+            self.deselect_special(kind)
+            return
+        self.select_special_slot(kind, sel[0] + 1)
+
+    def select_special_slot(self, kind, slot, rebuild=True, redraw=True):
+        count = self.get_special_visible_count(kind)
+        if slot < 1 or slot > count:
+            return
+        previous = self.get_special_store(kind).get(self.get_current_special_slot(kind))
+        previous_cells = self.get_special_cells_for_redraw(kind, previous)
+        self.set_current_special_slot(kind, slot)
+        if kind == "GATE": self.gate_tool = "GATE"
+        elif kind == "ITEM": self.item_tool = "ITEM"
+        elif kind == "GEM": self.gem_tool = "GEM"
+        if rebuild:
+            self.build_special_ui_by_kind(kind)
+        else:
+            self.refresh_special_list(kind, redraw=False)
+        if redraw:
+            selected_cells = self.get_special_cells_for_redraw(kind, self.get_special_store(kind)[slot])
+            self.redraw_cells(*(previous_cells + selected_cells))
+        self.upd_lbl()
+
+    def deselect_special(self, kind):
+        previous = self.get_special_store(kind).get(self.get_current_special_slot(kind))
+        previous_cells = self.get_special_cells_for_redraw(kind, previous)
+        self.set_current_special_slot(kind, 0)
+        self._drag_key_list = None
+        self._drag_key_idx = -1
+        lb = getattr(self, self.get_special_listbox_name(kind), None)
+        if lb and lb.winfo_exists():
+            setattr(self, f"_syncing_{kind.lower()}_selection", True)
+            try:
+                lb.selection_clear(0, tk.END)
+            finally:
+                setattr(self, f"_syncing_{kind.lower()}_selection", False)
+        self.build_special_ui_by_kind(kind)
+        self.redraw_cells(*previous_cells)
+        self.upd_lbl()
+
+    def add_special_to_list(self, kind):
+        count = self.get_special_visible_count(kind)
+        if count >= MAX_SPECIAL_SLOTS:
+            messagebox.showwarning("Limit reached", f"Maximum {MAX_SPECIAL_SLOTS} {self.get_special_display_title(kind).lower()} slots reached.")
+            return
+        self.push_undo_snapshot()
+        new_slot = count + 1
+        self.get_special_store(kind)[new_slot] = self.get_special_default_data(kind)
+        self.set_special_visible_count(kind, new_slot)
+        self.set_current_special_slot(kind, new_slot)
+        if kind == "GATE": self.gate_tool = "GATE"
+        elif kind == "ITEM": self.item_tool = "ITEM"
+        elif kind == "GEM": self.gem_tool = "GEM"
+        self.dirty = True
+        self.build_special_ui_by_kind(kind)
+        self.draw_grid()
+
+    def delete_special_slot(self, kind, idx):
+        count = self.get_special_visible_count(kind)
+        if idx < 1 or idx > count:
+            return False
+        self.push_undo_snapshot()
+        affected_cells = []
+        affected_cells.extend(self.clear_special_slot_visuals(kind, idx))
+        store = self.get_special_store(kind)
+        for j in range(idx, count):
+            store[j] = copy.deepcopy(store[j + 1])
+        store[count] = self.get_special_default_data(kind)
+        self.set_special_visible_count(kind, count - 1)
+        new_count = self.get_special_visible_count(kind)
+        self.set_current_special_slot(kind, min(idx, new_count) if new_count else 0)
+        self._drag_key_list = None
+        self._drag_key_idx = -1
+        self.invalidate_render_indexes()
+        self.dirty = True
+        self.build_special_ui_by_kind(kind)
+        self.draw_grid()
+        return True
+
+    def delete_selected_special(self, kind):
+        idx = self.get_current_special_slot(kind)
+        if idx <= 0:
+            lb = getattr(self, self.get_special_listbox_name(kind), None)
+            if lb and lb.winfo_exists():
+                sel = lb.curselection()
+                if sel:
+                    idx = sel[0] + 1
+        self.delete_special_slot(kind, idx)
+
+    def delete_all_special(self, kind):
+        count = self.get_special_visible_count(kind)
+        if count <= 0:
+            return
+        if not messagebox.askyesno(f"Delete All {self.get_special_display_title(kind)}", f"Delete all {self.get_special_display_title(kind).lower()} objects?"):
+            return
+        self.push_undo_snapshot()
+        for idx in range(1, count + 1):
+            self.clear_special_slot_visuals(kind, idx)
+            self.get_special_store(kind)[idx] = self.get_special_default_data(kind)
+        self.set_special_visible_count(kind, 0)
+        self.set_current_special_slot(kind, 0)
+        self._drag_key_list = None
+        self._drag_key_idx = -1
+        self.invalidate_render_indexes()
+        self.dirty = True
+        self.build_special_ui_by_kind(kind)
+        self.draw_grid()
+
+    def build_special_actions_and_list(self, parent, kind):
+        color = self.get_special_color(kind)
+        f_actions = tk.Frame(parent, bg="#1a1a1a")
+        f_actions.pack(anchor=tk.CENTER, pady=(6, 4))
+        tk.Button(f_actions, text="ADD TO LIST", command=lambda: self.add_special_to_list(kind), bg=color, fg="black", font=("Arial", 9, "bold"), width=14).pack(side=tk.LEFT, padx=(0, 6))
+        tk.Button(f_actions, text="DESELECT", command=lambda: self.deselect_special(kind), bg="#333", fg="white", font=("Arial", 9, "bold"), width=11).pack(side=tk.LEFT, padx=(0, 6))
+        tk.Button(f_actions, text="DELETE", command=lambda: self.delete_selected_special(kind), bg="#880000", fg="white", font=("Arial", 9, "bold"), width=10).pack(side=tk.LEFT, padx=(0, 6))
+        tk.Button(f_actions, text="DELETE ALL", command=lambda: self.delete_all_special(kind), bg="#AA0000", fg="white", font=("Arial", 9, "bold"), width=10).pack(side=tk.LEFT)
+
+        f_list = tk.Frame(parent, bg="#1a1a1a")
+        f_list.pack(fill=tk.BOTH, expand=True, padx=12, pady=(6, 8))
+        lb = tk.Listbox(f_list, bg="#222", fg="white", height=8, selectbackground=LISTBOX_SELECTION_BG, selectforeground=LISTBOX_SELECTION_FG, exportselection=False)
+        lb.pack(fill=tk.BOTH, expand=True)
+        setattr(self, self.get_special_listbox_name(kind), lb)
+        lb.bind('<<ListboxSelect>>', lambda e, k=kind: self.on_special_list_select(k, e))
+        self.refresh_special_list(kind, redraw=False)
+
+    def build_special_ui_by_kind(self, kind):
+        if kind == "GATE": self.build_gate_ui()
+        elif kind == "ITEM": self.build_item_ui()
+        elif kind == "GEM": self.build_gem_ui()
+
+    def selected_special_data_or_none(self, kind):
+        slot = self.get_current_special_slot(kind)
+        count = self.get_special_visible_count(kind)
+        if slot < 1 or slot > count:
+            return None
+        return self.get_special_store(kind)[slot]
+
+    def build_no_special_selected_message(self, parent, kind):
+        tk.Label(
+            parent,
+            text=f"No {self.get_special_display_title(kind).lower()} selected.\nUse ADD TO LIST or click an object on the map.",
+            fg="#AAAAAA",
+            bg="#1a1a1a",
+            justify=tk.CENTER,
+            font=("Arial", 9, "italic")
+        ).pack(anchor=tk.CENTER, pady=16)
+
     def build_gate_ui(self):
         panel = self.panels['GATE']
         for w in panel.winfo_children(): w.destroy()
+        tk.Label(panel, text="BEAMGATE PLACER", bg="#00FFFF", fg="black", font=("Arial", 12, "bold")).pack(fill=tk.X, pady=(10, 6))
         p = tk.Frame(panel, bg="#1a1a1a")
-        p.pack(fill=tk.X, anchor=tk.NW, padx=12, pady=6)
+        p.pack(fill=tk.BOTH, expand=True, anchor=tk.NW, padx=12, pady=6)
 
-        f_slots = tk.Frame(p, bg="#1a1a1a"); f_slots.pack(fill=tk.X, pady=5)
-
-        for i in range(1, self.visible_gate_slots + 1):
-            bg = "#00FFFF" if i == self.current_gate_slot else "#333"
-            fg = "black" if i == self.current_gate_slot else "white"
-            tk.Button(f_slots, text=str(i), bg=bg, fg=fg, width=2, command=lambda x=i: self.select_gate_slot(x)).pack(side=tk.LEFT, padx=1)
-
-        if self.visible_gate_slots < MAX_SPECIAL_SLOTS:
-            def add_slot():
-                self.push_undo_snapshot()
-                self.visible_gate_slots += 1; self.build_gate_ui()
-            tk.Button(f_slots, text="+", bg="#008888", fg="white", width=2, command=add_slot).pack(side=tk.LEFT, padx=5)
-
-        if self.visible_gate_slots > 1:
-            def rem_slot():
-                self.push_undo_snapshot()
-                idx = self.visible_gate_slots
-                old_cell = self.get_special_cell(self.gates[idx])
-                self.clear_special_auto_visual("GATE", self.gates[idx])
-                self.gates[idx] = {'active': False, 'x': -1, 'y': -1, 'keys': [], 'target': 0, 'closed_bp': 25, 'opened_bp': 26, 'hidden': False}
-                self.visible_gate_slots -= 1
-                if self.current_gate_slot > self.visible_gate_slots: self.current_gate_slot = self.visible_gate_slots
-                self.build_gate_ui(); self.redraw_cells(old_cell)
-            tk.Button(f_slots, text="-", bg="#880000", fg="white", width=2, command=rem_slot).pack(side=tk.LEFT, padx=2)
-
-        g_data = self.gates[self.current_gate_slot]
+        g_data = self.selected_special_data_or_none("GATE")
+        if not g_data:
+            self.build_no_special_selected_message(p, "GATE")
+            self.build_special_actions_and_list(p, "GATE")
+            self.upd_lbl(); self.draw_grid()
+            return
 
         # --- PRESET DROPDOWN (GATE) ---
-        f_pre = tk.Frame(p, bg="#1a1a1a"); f_pre.pack(anchor=tk.CENTER, pady=(10,2))
+        f_pre = tk.Frame(p, bg="#1a1a1a"); f_pre.pack(anchor=tk.CENTER, pady=(4,2))
         tk.Label(f_pre, text="Road Preset:", bg="#1a1a1a", fg="#aaa").pack(side=tk.LEFT, padx=5)
-        
         gate_preset_values = ["With Roads (5/6)", "No Road (25/26)"]
         cb_gate_preset = ttk.Combobox(f_pre, values=gate_preset_values, state="readonly", width=24)
         cb_gate_preset.pack(side=tk.LEFT, padx=5)
-        
         if g_data['closed_bp'] == 5 and g_data['opened_bp'] == 6:
             cb_gate_preset.set("With Roads (5/6)")
         elif g_data['closed_bp'] == 25 and g_data['opened_bp'] == 26:
-             cb_gate_preset.set("No Road (25/26)")
+            cb_gate_preset.set("No Road (25/26)")
         else:
-             cb_gate_preset.set("") 
+            cb_gate_preset.set("")
 
         def on_gate_preset_select(event):
             val = cb_gate_preset.get()
-            old_closed = g_data['closed_bp']
-            old_opened = g_data['opened_bp']
+            old_closed = g_data['closed_bp']; old_opened = g_data['opened_bp']
             old_cell = self.get_special_cell(g_data)
             old_visual = self.get_special_auto_visual("GATE", g_data)
             if "With Roads" in val:
@@ -834,243 +1137,149 @@ class UIMixin:
                 return
             if new_closed != old_closed or new_opened != old_opened:
                 self.push_undo_snapshot()
-                g_data['closed_bp'] = new_closed
-                g_data['opened_bp'] = new_opened
+                g_data['closed_bp'] = new_closed; g_data['opened_bp'] = new_opened
                 self.sync_special_auto_visual("GATE", g_data, old_cell=old_cell, old_visual=old_visual)
-            self.build_gate_ui() 
-            self.draw_grid()
-
+                self.dirty = True
+            self.build_gate_ui(); self.draw_grid()
         cb_gate_preset.bind("<<ComboboxSelected>>", on_gate_preset_select)
-        
         tk.Label(p, text="(Custom values allowed)", fg="#777", bg="#1a1a1a", font=("Arial", 7)).pack(anchor=tk.CENTER, pady=(0,5))
 
         f = tk.Frame(p, bg="#1a1a1a"); f.pack(anchor=tk.CENTER, pady=5)
-
         tk.Label(f, text="Target Level:", fg="white", bg="#1a1a1a", width=12).grid(row=0, column=0, sticky="e", padx=(0, 4), pady=2)
-        e_tgt = tk.Entry(f, width=8); e_tgt.grid(row=0, column=1, sticky="w", padx=(0, 12), pady=2)
-        e_tgt.insert(0, str(g_data['target']))
-
+        e_tgt = tk.Entry(f, width=8); e_tgt.grid(row=0, column=1, sticky="w", padx=(0, 12), pady=2); e_tgt.insert(0, str(g_data['target']))
         tk.Label(f, text="Off Model:", fg="white", bg="#1a1a1a", width=10).grid(row=0, column=2, sticky="e", padx=(0, 4), pady=2)
-        e_cls = tk.Entry(f, width=8); e_cls.grid(row=0, column=3, sticky="w", pady=2)
-        e_cls.insert(0, str(g_data['closed_bp']))
-
+        e_cls = tk.Entry(f, width=8); e_cls.grid(row=0, column=3, sticky="w", pady=2); e_cls.insert(0, str(g_data['closed_bp']))
         tk.Label(f, text="On Model:", fg="white", bg="#1a1a1a", width=12).grid(row=1, column=0, sticky="e", padx=(0, 4), pady=2)
-        e_opn = tk.Entry(f, width=8); e_opn.grid(row=1, column=1, sticky="w", padx=(0, 12), pady=2)
-        e_opn.insert(0, str(g_data['opened_bp']))
+        e_opn = tk.Entry(f, width=8); e_opn.grid(row=1, column=1, sticky="w", padx=(0, 12), pady=2); e_opn.insert(0, str(g_data['opened_bp']))
 
-        def upd_g(ev):
+        def upd_g(ev=None):
             try:
-                new_target = int(e_tgt.get())
-                new_closed = int(e_cls.get())
-                new_opened = int(e_opn.get())
+                new_target = int(e_tgt.get()); new_closed = int(e_cls.get()); new_opened = int(e_opn.get())
                 if new_target != g_data['target'] or new_closed != g_data['closed_bp'] or new_opened != g_data['opened_bp']:
                     old_cell = self.get_special_cell(g_data)
                     old_visual = self.get_special_auto_visual("GATE", g_data)
                     visual_changed = new_closed != g_data['closed_bp'] or new_opened != g_data['opened_bp']
                     self.push_undo_snapshot()
-                    g_data['target'] = new_target
-                    g_data['closed_bp'] = new_closed
-                    g_data['opened_bp'] = new_opened
+                    g_data['target'] = new_target; g_data['closed_bp'] = new_closed; g_data['opened_bp'] = new_opened
                     if visual_changed:
                         self.sync_special_auto_visual("GATE", g_data, old_cell=old_cell, old_visual=old_visual)
-                
+                    self.dirty = True
                 if g_data['closed_bp'] == 5 and g_data['opened_bp'] == 6: cb_gate_preset.set("With Roads (5/6)")
                 elif g_data['closed_bp'] == 25 and g_data['opened_bp'] == 26: cb_gate_preset.set("No Road (25/26)")
                 else: cb_gate_preset.set("")
-                self.upd_lbl()
-                self.draw_grid()
+                self.refresh_special_list("GATE", redraw=False); self.upd_lbl(); self.draw_grid()
             except: pass
-        e_tgt.bind("<KeyRelease>", upd_g); e_cls.bind("<KeyRelease>", upd_g); e_opn.bind("<KeyRelease>", upd_g)
+        for e in [e_tgt, e_cls, e_opn]: e.bind("<KeyRelease>", upd_g)
 
         f_opt = tk.Frame(p, bg="#1a1a1a"); f_opt.pack(anchor=tk.CENTER, pady=(4, 2))
         self.var_gate_hid = tk.BooleanVar(value=g_data.get('hidden', False))
         def tog_gate_hid():
             val = self.var_gate_hid.get()
             if g_data.get('hidden', False) != val:
-                self.push_undo_snapshot()
-                g_data['hidden'] = val
-                self.dirty = True
+                self.push_undo_snapshot(); g_data['hidden'] = val; self.dirty = True; self.refresh_special_list("GATE", redraw=False)
         tk.Checkbutton(f_opt, text="Hide in Briefing", variable=self.var_gate_hid, command=tog_gate_hid, bg="#1a1a1a", fg="white", selectcolor="#444").pack(anchor=tk.CENTER, padx=5)
 
-        def set_t(t): self.gate_tool=t
-        tk.Button(p, text="[ PLACE BEAMGATE ]", command=lambda: set_t("GATE"), bg="#00FFFF", fg="black", width=24).pack(anchor=tk.CENTER, pady=5)
-        tk.Button(p, text="[ PLACE KEYSECT ]", command=lambda: set_t("KEY"), bg="#FFFF00", fg="black", width=24).pack(anchor=tk.CENTER, pady=2)
-        self.upd_lbl()
-        self.draw_grid()
+        f_place = tk.Frame(p, bg="#1a1a1a"); f_place.pack(anchor=tk.CENTER, pady=(8, 0))
+        tk.Button(f_place, text="[ PLACE BEAMGATE ]", command=lambda: self.set_special_tool("GATE", "GATE"), bg="#00FFFF", fg="black", width=24).pack(anchor=tk.CENTER, pady=(0, 3))
+        tk.Button(f_place, text="[ PLACE KEYSECT ]", command=lambda: self.set_special_tool("GATE", "KEY"), bg="#FFFF00", fg="black", width=24).pack(anchor=tk.CENTER)
+        self.build_special_actions_and_list(p, "GATE")
+        self.upd_lbl(); self.draw_grid()
 
     def select_gate_slot(self, slot):
-        self.current_gate_slot = slot; self.build_gate_ui()
+        self.select_special_slot("GATE", slot)
 
     def build_item_ui(self):
         panel = self.panels['ITEM']
         for w in panel.winfo_children(): w.destroy()
+        tk.Label(panel, text="BOMB PLACER", bg="#FF00FF", fg="white", font=("Arial", 12, "bold")).pack(fill=tk.X, pady=(10, 6))
         p = tk.Frame(panel, bg="#1a1a1a")
-        p.pack(fill=tk.X, anchor=tk.NW, padx=12, pady=6)
+        p.pack(fill=tk.BOTH, expand=True, anchor=tk.NW, padx=12, pady=6)
 
-        f_slots = tk.Frame(p, bg="#1a1a1a"); f_slots.pack(fill=tk.X, pady=5)
+        i_data = self.selected_special_data_or_none("ITEM")
+        if not i_data:
+            self.build_no_special_selected_message(p, "ITEM")
+            self.build_special_actions_and_list(p, "ITEM")
+            self.upd_lbl(); self.draw_grid()
+            return
 
-        for i in range(1, self.visible_item_slots + 1):
-            bg = "#FF00FF" if i == self.current_item_slot else "#333"
-            fg = "white"
-            tk.Button(f_slots, text=str(i), bg=bg, fg=fg, width=2, command=lambda x=i: self.select_item_slot(x)).pack(side=tk.LEFT, padx=1)
-
-        if self.visible_item_slots < MAX_SPECIAL_SLOTS:
-            def add_slot():
-                self.push_undo_snapshot()
-                self.visible_item_slots += 1; self.build_item_ui()
-            tk.Button(f_slots, text="+", bg="#880088", fg="white", width=2, command=add_slot).pack(side=tk.LEFT, padx=5)
-
-        if self.visible_item_slots > 1:
-            def rem_slot():
-                self.push_undo_snapshot()
-                idx = self.visible_item_slots
-                old_cell = self.get_special_cell(self.items[idx])
-                key_cells = list(self.items[idx].get('keys', []))
-                self.clear_all_item_key_visuals(self.items[idx])
-                self.clear_special_auto_visual("ITEM", self.items[idx])
-                self.items[idx] = {'active': False, 'x': -1, 'y': -1, 'keys': [], 'countdown': 300000,
-                          'inactive_bp': 35, 'active_bp': 36, 'trigger_bp': 37, 'type': 1, 'hidden': False}
-                self.visible_item_slots -= 1
-                if self.current_item_slot > self.visible_item_slots: self.current_item_slot = self.visible_item_slots
-                self.build_item_ui(); self.redraw_cells(old_cell, *key_cells)
-            tk.Button(f_slots, text="-", bg="#880000", fg="white", width=2, command=rem_slot).pack(side=tk.LEFT, padx=2)
-
-        i_data = self.items[self.current_item_slot]
-        
-        # --- PRESET DROPDOWN (ITEM) ---
-        f_pre = tk.Frame(p, bg="#1a1a1a"); f_pre.pack(anchor=tk.CENTER, pady=(10,2))
+        f_pre = tk.Frame(p, bg="#1a1a1a"); f_pre.pack(anchor=tk.CENTER, pady=(4,2))
         tk.Label(f_pre, text="Model Preset:", bg="#1a1a1a", fg="#aaa", width=12, anchor="e").pack(side=tk.LEFT, padx=(0, 5))
-        
         preset_values = ["Standard (35/36/37)", "Parasite (68/69/70)"]
-        cb_preset = ttk.Combobox(f_pre, values=preset_values, state="readonly", width=22)
-        cb_preset.pack(side=tk.LEFT)
-        
+        cb_preset = ttk.Combobox(f_pre, values=preset_values, state="readonly", width=22); cb_preset.pack(side=tk.LEFT)
         if i_data['inactive_bp'] == 35 and i_data['active_bp'] == 36 and i_data['trigger_bp'] == 37:
-             cb_preset.set("Standard (35/36/37)")
+            cb_preset.set("Standard (35/36/37)")
         elif i_data['inactive_bp'] == 68 and i_data['active_bp'] == 69 and i_data['trigger_bp'] == 70:
-             cb_preset.set("Parasite (68/69/70)")
+            cb_preset.set("Parasite (68/69/70)")
         else:
-             cb_preset.set("") 
+            cb_preset.set("")
 
         def on_preset_select(event):
             val = cb_preset.get()
             old_vals = (i_data['inactive_bp'], i_data['active_bp'], i_data['trigger_bp'])
-            old_cell = self.get_special_cell(i_data)
-            old_visual = self.get_special_auto_visual("ITEM", i_data)
-            if "Standard" in val:
-                new_vals = (35, 36, 37)
-            elif "Parasite" in val:
-                new_vals = (68, 69, 70)
-            else:
-                return
+            old_cell = self.get_special_cell(i_data); old_visual = self.get_special_auto_visual("ITEM", i_data)
+            if "Standard" in val: new_vals = (35, 36, 37)
+            elif "Parasite" in val: new_vals = (68, 69, 70)
+            else: return
             if new_vals != old_vals:
                 self.push_undo_snapshot()
                 i_data['inactive_bp'], i_data['active_bp'], i_data['trigger_bp'] = new_vals
                 self.sync_special_auto_visual("ITEM", i_data, old_cell=old_cell, old_visual=old_visual)
-            self.build_item_ui() 
-            self.draw_grid()
-
+                self.dirty = True
+            self.build_item_ui(); self.draw_grid()
         cb_preset.bind("<<ComboboxSelected>>", on_preset_select)
 
-        # --- KEYSECTOR VISUAL DROPDOWN (ITEM) ---
         f_key_pre = tk.Frame(p, bg="#1a1a1a"); f_key_pre.pack(anchor=tk.CENTER, pady=(8, 2))
         tk.Label(f_key_pre, text="Keysect Preset:", bg="#1a1a1a", fg="#aaa", width=14, anchor="e").pack(side=tk.LEFT, padx=(0, 5))
-
         key_visual_values = ["No Road (F3)", "With Roads (F4)"]
-        cb_key_visual = ttk.Combobox(f_key_pre, values=key_visual_values, state="readonly", width=22)
-        cb_key_visual.pack(side=tk.LEFT)
-
-        if self.get_item_key_visual_typ(i_data) == "f4":
-            cb_key_visual.set("With Roads (F4)")
-        else:
-            cb_key_visual.set("No Road (F3)")
+        cb_key_visual = ttk.Combobox(f_key_pre, values=key_visual_values, state="readonly", width=22); cb_key_visual.pack(side=tk.LEFT)
+        cb_key_visual.set("With Roads (F4)" if self.get_item_key_visual_typ(i_data) == "f4" else "No Road (F3)")
 
         def on_key_visual_select(event=None):
             old_visual = self.get_item_key_visual_typ(i_data)
-            val = cb_key_visual.get()
-            new_visual = "f4" if "F4" in val else "f3"
-            if old_visual == new_visual:
-                return
-            self.push_undo_snapshot()
-            i_data['_key_visual_typ'] = new_visual
+            new_visual = "f4" if "F4" in cb_key_visual.get() else "f3"
+            if old_visual == new_visual: return
+            self.push_undo_snapshot(); i_data['_key_visual_typ'] = new_visual
             changed_cells = self.sync_item_key_visual_preset(i_data, old_visual, new_visual)
             if changed_cells:
-                self.invalidate_render_indexes()
-                self.redraw_cells(*changed_cells)
+                self.invalidate_render_indexes(); self.redraw_cells(*changed_cells)
             else:
                 self.dirty = True
-
         cb_key_visual.bind("<<ComboboxSelected>>", on_key_visual_select)
-        
         tk.Label(p, text="(Custom values allowed)", fg="#777", bg="#1a1a1a", font=("Arial", 7)).pack(anchor=tk.CENTER, pady=(0,5))
-        
-        f = tk.Frame(p, bg="#1a1a1a"); f.pack(anchor=tk.CENTER, pady=5)
 
+        f = tk.Frame(p, bg="#1a1a1a"); f.pack(anchor=tk.CENTER, pady=5)
         tk.Label(f, text="Timer:", fg="white", bg="#1a1a1a", width=10).grid(row=0, column=0, sticky="e", padx=(0, 4), pady=2)
         e_cnt = tk.Entry(f, width=8); e_cnt.grid(row=0, column=1, sticky="w", padx=(0, 8), pady=2); e_cnt.insert(0, str(i_data['countdown']))
-
-        lbl_mins = tk.Label(f, text="", bg="#1a1a1a", fg="#00FF00", font=("Arial", 8))
-        lbl_mins.grid(row=0, column=2, padx=(0, 12), sticky="w")
-
+        lbl_mins = tk.Label(f, text="", bg="#1a1a1a", fg="#00FF00", font=("Arial", 8)); lbl_mins.grid(row=0, column=2, padx=(0, 12), sticky="w")
         tk.Label(f, text="Type:", fg="white", bg="#1a1a1a", width=8).grid(row=0, column=3, sticky="e", padx=(0, 4), pady=2)
-        e_typ = ttk.Combobox(f, values=["Default"], width=10)
-        e_typ.grid(row=0, column=4, sticky="w", pady=2)
-        e_typ.insert(0, self.format_item_type_value(i_data['type']))
-
+        e_typ = ttk.Combobox(f, values=["Default"], width=10); e_typ.grid(row=0, column=4, sticky="w", pady=2); e_typ.insert(0, self.format_item_type_value(i_data['type']))
         tk.Label(f, text="Off Model:", fg="white", bg="#1a1a1a", width=10).grid(row=1, column=0, sticky="e", padx=(0, 4), pady=2)
         e_ina = tk.Entry(f, width=8); e_ina.grid(row=1, column=1, sticky="w", padx=(0, 8), pady=2); e_ina.insert(0, str(i_data['inactive_bp']))
-
         tk.Label(f, text="On Model:", fg="white", bg="#1a1a1a", width=8).grid(row=1, column=3, sticky="e", padx=(0, 4), pady=2)
         e_act = tk.Entry(f, width=8); e_act.grid(row=1, column=4, sticky="w", pady=2); e_act.insert(0, str(i_data['active_bp']))
-
         tk.Label(f, text="Trigger:", fg="white", bg="#1a1a1a", width=10).grid(row=2, column=0, sticky="e", padx=(0, 4), pady=2)
         e_trg = tk.Entry(f, width=8); e_trg.grid(row=2, column=1, sticky="w", padx=(0, 8), pady=2); e_trg.insert(0, str(i_data['trigger_bp']))
 
         def upd(ev=None):
             try:
-                new_countdown = int(e_cnt.get())
-                new_type = self.parse_item_type_value(e_typ.get())
-                if new_type is None:
-                    raise ValueError
-                new_inactive = int(e_ina.get())
-                new_active = int(e_act.get())
-                new_trigger = int(e_trg.get())
-                if (
-                    new_countdown != i_data['countdown'] or
-                    new_type != i_data['type'] or
-                    new_inactive != i_data['inactive_bp'] or
-                    new_active != i_data['active_bp'] or
-                    new_trigger != i_data['trigger_bp']
-                ):
-                    old_cell = self.get_special_cell(i_data)
-                    old_visual = self.get_special_auto_visual("ITEM", i_data)
-                    visual_changed = (
-                        new_inactive != i_data['inactive_bp'] or
-                        new_active != i_data['active_bp'] or
-                        new_trigger != i_data['trigger_bp']
-                    )
+                new_countdown = int(e_cnt.get()); new_type = self.parse_item_type_value(e_typ.get())
+                if new_type is None: raise ValueError
+                new_inactive = int(e_ina.get()); new_active = int(e_act.get()); new_trigger = int(e_trg.get())
+                if (new_countdown != i_data['countdown'] or new_type != i_data['type'] or new_inactive != i_data['inactive_bp'] or new_active != i_data['active_bp'] or new_trigger != i_data['trigger_bp']):
+                    old_cell = self.get_special_cell(i_data); old_visual = self.get_special_auto_visual("ITEM", i_data)
+                    visual_changed = (new_inactive != i_data['inactive_bp'] or new_active != i_data['active_bp'] or new_trigger != i_data['trigger_bp'])
                     self.push_undo_snapshot()
-                    i_data['countdown'] = new_countdown
-                    i_data['type'] = new_type
-                    i_data['inactive_bp'] = new_inactive
-                    i_data['active_bp'] = new_active
-                    i_data['trigger_bp'] = new_trigger
+                    i_data['countdown'] = new_countdown; i_data['type'] = new_type; i_data['inactive_bp'] = new_inactive; i_data['active_bp'] = new_active; i_data['trigger_bp'] = new_trigger
                     if visual_changed:
                         self.sync_special_auto_visual("ITEM", i_data, old_cell=old_cell, old_visual=old_visual)
-                val = i_data['countdown']
-                lbl_mins.config(text=f"{val/60000:.1f}m")
-                
-                if i_data['inactive_bp'] == 35 and i_data['active_bp'] == 36 and i_data['trigger_bp'] == 37:
-                    cb_preset.set("Standard (35/36/37)")
-                elif i_data['inactive_bp'] == 68 and i_data['active_bp'] == 69 and i_data['trigger_bp'] == 70:
-                    cb_preset.set("Parasite (68/69/70)")
-                else:
-                    cb_preset.set("")
-                    
-                self.upd_lbl()
-                self.draw_grid()
-            except: lbl_mins.config(text=f"ERR")
-        upd();
+                    self.dirty = True
+                lbl_mins.config(text=f"{i_data['countdown']/60000:.1f}m")
+                if i_data['inactive_bp'] == 35 and i_data['active_bp'] == 36 and i_data['trigger_bp'] == 37: cb_preset.set("Standard (35/36/37)")
+                elif i_data['inactive_bp'] == 68 and i_data['active_bp'] == 69 and i_data['trigger_bp'] == 70: cb_preset.set("Parasite (68/69/70)")
+                else: cb_preset.set("")
+                self.refresh_special_list("ITEM", redraw=False); self.upd_lbl(); self.draw_grid()
+            except: lbl_mins.config(text="ERR")
+        upd()
         for e in [e_cnt, e_typ, e_ina, e_act, e_trg]: e.bind("<KeyRelease>", upd)
         e_typ.bind("<<ComboboxSelected>>", upd)
 
@@ -1079,58 +1288,34 @@ class UIMixin:
         def tog_item_hid():
             val = self.var_item_hid.get()
             if i_data.get('hidden', False) != val:
-                self.push_undo_snapshot()
-                i_data['hidden'] = val
-                self.dirty = True
+                self.push_undo_snapshot(); i_data['hidden'] = val; self.dirty = True; self.refresh_special_list("ITEM", redraw=False)
         tk.Checkbutton(f_opt, text="Hide in Briefing", variable=self.var_item_hid, command=tog_item_hid, bg="#1a1a1a", fg="white", selectcolor="#444").pack(anchor=tk.CENTER, padx=5)
 
-        def set_t(t): self.item_tool=t
         f_place = tk.Frame(p, bg="#1a1a1a"); f_place.pack(anchor=tk.CENTER, pady=(8, 0))
-        tk.Button(f_place, text="[ PLACE BOMB ]", command=lambda: set_t("ITEM"), bg="#FF00FF", fg="black", width=24).pack(anchor=tk.CENTER, pady=(0, 3))
-        tk.Button(f_place, text="[ PLACE KEYSECT ]", command=lambda: set_t("KEY"), bg="#FF9900", fg="black", width=24).pack(anchor=tk.CENTER)
-        self.upd_lbl()
-        self.draw_grid()
+        tk.Button(f_place, text="[ PLACE BOMB ]", command=lambda: self.set_special_tool("ITEM", "ITEM"), bg="#FF00FF", fg="black", width=24).pack(anchor=tk.CENTER, pady=(0, 3))
+        tk.Button(f_place, text="[ PLACE KEYSECT ]", command=lambda: self.set_special_tool("ITEM", "KEY"), bg="#FF9900", fg="black", width=24).pack(anchor=tk.CENTER)
+        self.build_special_actions_and_list(p, "ITEM")
+        self.upd_lbl(); self.draw_grid()
 
     def select_item_slot(self, slot):
-        self.current_item_slot = slot; self.build_item_ui()
+        self.select_special_slot("ITEM", slot)
 
     def build_gem_ui(self):
         panel = self.panels['GEM']
         for w in panel.winfo_children(): w.destroy()
+        tk.Label(panel, text="GEM PLACER", bg="#00FF00", fg="black", font=("Arial", 12, "bold")).pack(fill=tk.X, pady=(10, 6))
         p = tk.Frame(panel, bg="#1a1a1a")
-        p.pack(fill=tk.X, anchor=tk.NW, padx=12, pady=6)
+        p.pack(fill=tk.BOTH, expand=True, anchor=tk.NW, padx=12, pady=6)
 
-        # 1. SLOTS
-        f_slots = tk.Frame(p, bg="#1a1a1a"); f_slots.pack(fill=tk.X, pady=5)
-        for i in range(1, self.visible_gem_slots + 1):
-            bg = "#00FF00" if i == self.current_gem_slot else "#333"
-            fg = "black" if i == self.current_gem_slot else "white"
-            tk.Button(f_slots, text=str(i), bg=bg, fg=fg, width=2, command=lambda x=i: self.select_gem_slot(x)).pack(side=tk.LEFT, padx=1)
+        data = self.selected_special_data_or_none("GEM")
+        if not data:
+            self.build_no_special_selected_message(p, "GEM")
+            self.build_special_actions_and_list(p, "GEM")
+            self.upd_lbl(); self.draw_grid()
+            return
 
-        if self.visible_gem_slots < MAX_SPECIAL_SLOTS:
-            def add_slot():
-                self.push_undo_snapshot()
-                self.visible_gem_slots += 1; self.build_gem_ui()
-            tk.Button(f_slots, text="+", bg="#005500", fg="white", width=2, command=add_slot).pack(side=tk.LEFT, padx=5)
-
-        if self.visible_gem_slots > 1:
-            def rem_slot():
-                self.push_undo_snapshot()
-                idx = self.visible_gem_slots
-                self.clear_gem_building_visual_if_matches(self.gems[idx])
-                self.gems[idx] = {'x': -1, 'y': -1, 'blg': 50, 'type': 3, 'actions': [], 'hidden': False}
-                self.visible_gem_slots -= 1
-                if self.current_gem_slot > self.visible_gem_slots: self.current_gem_slot = self.visible_gem_slots
-                self.build_gem_ui(); self.draw_grid()
-            tk.Button(f_slots, text="-", bg="#880000", fg="white", width=2, command=rem_slot).pack(side=tk.LEFT, padx=2)
-
-        data = self.gems[self.current_gem_slot]
-
-        # 2. PROPERTIES (BUILDING & TYPE)
-        f_prop = tk.Frame(p, bg="#1a1a1a"); f_prop.pack(anchor=tk.CENTER, pady=10)
-
+        f_prop = tk.Frame(p, bg="#1a1a1a"); f_prop.pack(anchor=tk.CENTER, pady=6)
         tk.Label(f_prop, text="Building ID:", fg="white", bg="#1a1a1a").grid(row=0, column=0, sticky="e", padx=5, pady=2)
-
         cb_gem_model = ttk.Combobox(f_prop, values=self.GEM_MODEL_VALUES, width=26)
         cb_gem_model.grid(row=0, column=1, sticky="w", padx=5, pady=2)
         cb_gem_model.set(self.format_gem_model_value(data['blg']))
@@ -1143,165 +1328,266 @@ class UIMixin:
                     cb_gem_model.set(self.format_gem_model_value(data['blg']))
                 return
             if new_blg != data['blg']:
-                self.push_undo_snapshot()
-                old_cell = self.get_gem_cell(data)
-                old_blg = data['blg']
-                data['blg'] = new_blg
+                self.push_undo_snapshot(); old_cell = self.get_gem_cell(data); old_blg = data['blg']; data['blg'] = new_blg
                 self.sync_gem_building_visual(data, old_cell=old_cell, old_building=old_blg)
-                if old_cell:
-                    self.redraw_cells(old_cell)
+                if old_cell: self.redraw_cells(old_cell)
                 self.dirty = True
             if cb_gem_model.get().strip().isdigit() or new_blg in self.GEM_MODEL_LABELS:
                 cb_gem_model.set(self.format_gem_model_value(new_blg))
-
+            self.refresh_special_list("GEM", redraw=False)
         cb_gem_model.bind("<<ComboboxSelected>>", lambda e: apply_gem_model_from_combo(show_warning=True))
         cb_gem_model.bind("<Return>", lambda e: apply_gem_model_from_combo(show_warning=True))
         cb_gem_model.bind("<FocusOut>", lambda e: apply_gem_model_from_combo(show_warning=True))
         cb_gem_model.bind("<KeyRelease>", lambda e: apply_gem_model_from_combo(show_warning=False))
         tk.Label(f_prop, text="(Custom values allowed)", fg="#777", bg="#1a1a1a", font=("Arial", 7)).grid(row=1, column=1, sticky="w", padx=5, pady=(0,5))
 
-        # TYPE DROPDOWN
         tk.Label(f_prop, text="Type:", fg="white", bg="#1a1a1a").grid(row=2, column=0, sticky="e", padx=5, pady=2)
         type_map = {1: "1 (Weapon/Pwr)", 2: "2 (Shield)", 3: "3 (Tech/Unlock)"}
         rev_map = {v: k for k, v in type_map.items()}
         current_display = type_map.get(data['type'], "3 (Tech/Unlock)")
         type_var = tk.StringVar(value=current_display)
         def upd_t(val):
-             new_type = rev_map.get(val, 3)
-             if new_type != data['type']:
-                 self.push_undo_snapshot()
-                 data['type'] = new_type
-             self.upd_lbl(); self.draw_grid()
+            new_type = rev_map.get(val, 3)
+            if new_type != data['type']:
+                self.push_undo_snapshot(); data['type'] = new_type; self.dirty = True; self.refresh_special_list("GEM", redraw=False)
+            self.upd_lbl(); self.draw_grid()
         om = ttk.OptionMenu(f_prop, type_var, current_display, *type_map.values(), command=upd_t)
-        om.config(width=20)
-        om.grid(row=2, column=1, sticky="w", padx=5, pady=2)
+        om.config(width=20); om.grid(row=2, column=1, sticky="w", padx=5, pady=2)
 
-        f_opt = tk.Frame(p, bg="#1a1a1a"); f_opt.pack(anchor=tk.CENTER, pady=(0, 6))
+        f_opt = tk.Frame(p, bg="#1a1a1a"); f_opt.pack(anchor=tk.CENTER, pady=(0, 4))
         self.var_gem_hid = tk.BooleanVar(value=data.get('hidden', False))
         def tog_gem_hid():
             val = self.var_gem_hid.get()
             if data.get('hidden', False) != val:
-                self.push_undo_snapshot()
-                data['hidden'] = val
-                self.dirty = True
+                self.push_undo_snapshot(); data['hidden'] = val; self.dirty = True; self.refresh_special_list("GEM", redraw=False)
         tk.Checkbutton(f_opt, text="Hide in Briefing", variable=self.var_gem_hid, command=tog_gem_hid, bg="#1a1a1a", fg="white", selectcolor="#444").pack(anchor=tk.CENTER, padx=5)
 
-        # 3. ACTIONS
-        tk.Label(p, text="--- ACTIONS ---", fg="#00FF00", bg="#1a1a1a", font=("bold")).pack(anchor=tk.CENTER, pady=(15,5))
+        tk.Label(p, text="--- ACTIONS ---", fg="#00FF00", bg="#1a1a1a", font=("Arial", 9, "bold")).pack(anchor=tk.CENTER, pady=(8,4))
         f_act = tk.Frame(p, bg="#1a1a1a"); f_act.pack(anchor=tk.CENTER)
-
-        # Define Variables first
         tgt_type_var = tk.StringVar(value="modify_vehicle")
-
         tk.Label(f_act, text="Modify:", fg="white", bg="#1a1a1a", width=7, anchor="e").grid(row=0, column=0, sticky="e", padx=(0, 5), pady=2)
         om_mod = ttk.OptionMenu(f_act, tgt_type_var, "modify_vehicle", "modify_vehicle", "modify_building", "modify_weapon")
-        om_mod.config(width=22)
-        om_mod.grid(row=0, column=1, sticky="w", pady=2)
-
+        om_mod.config(width=22); om_mod.grid(row=0, column=1, sticky="w", pady=2)
         tk.Label(f_act, text="ID:", fg="white", bg="#1a1a1a", width=7, anchor="e").grid(row=1, column=0, sticky="e", padx=(0, 5), pady=2)
-        cb_target_id = ttk.Combobox(f_act, width=34)
-        cb_target_id.grid(row=1, column=1, sticky="w", pady=2)
-
+        cb_target_id = ttk.Combobox(f_act, width=34); cb_target_id.grid(row=1, column=1, sticky="w", pady=2)
         tk.Label(f_act, text="Do:", fg="white", bg="#1a1a1a", width=7, anchor="e").grid(row=2, column=0, sticky="e", padx=(0, 5), pady=2)
-
         param_combo = ttk.Combobox(f_act, values=["enable", "add_energy", "add_shield", "num_weapons"], width=22)
-        param_combo.set("enable")
-        param_combo.grid(row=2, column=1, sticky="w", pady=2)
-
+        param_combo.set("enable"); param_combo.grid(row=2, column=1, sticky="w", pady=2)
         tk.Label(f_act, text="Val:", fg="white", bg="#1a1a1a", width=7, anchor="e").grid(row=3, column=0, sticky="e", padx=(0, 5), pady=2)
-        e_val = tk.Entry(f_act, width=8); e_val.grid(row=3, column=1, sticky="w", pady=2)
-        e_val.insert(0,"0")
-
-        # Custom Definition Note
+        e_val = tk.Entry(f_act, width=8); e_val.grid(row=3, column=1, sticky="w", pady=2); e_val.insert(0,"0")
         tk.Label(f_act, text="Custom definition allowed", fg="#777", bg="#1a1a1a", font=("Arial", 7)).grid(row=4, column=1, sticky="w", pady=(0,5))
 
-        # LOGIC FOR AUTO-UPDATE (action controls only)
-        def on_modify_change(*args):
-            sel = tgt_type_var.get()
-            values = []
-            if sel == "modify_vehicle":
-                param_combo['values'] = ["enable", "add_energy", "add_shield", "num_weapons"]
-                param_combo.set("enable")
-                values = self.definition_combo_values('veh')
-            elif sel == "modify_building":
-                param_combo['values'] = ["enable"]
-                param_combo.set("enable")
-                values = self.definition_combo_values('blg')
-            elif sel == "modify_weapon":
-                param_combo['values'] = ["add_energy"]
-                param_combo.set("add_energy")
-                values = self.definition_combo_values('weapon')
+        action_ui_state = {"selected_index": None, "loading": False, "val_edit_snapshot_taken": False}
+
+        def action_target_defs_key(target_type):
+            return {
+                "modify_vehicle": "veh",
+                "modify_building": "blg",
+                "modify_weapon": "weapon",
+            }.get(target_type)
+
+        def action_param_values(target_type):
+            if target_type == "modify_building":
+                return ["enable"]
+            if target_type == "modify_weapon":
+                return ["add_energy"]
+            return ["enable", "add_energy", "add_shield", "num_weapons"]
+
+        def refresh_action_target_controls(reset_values=True):
+            target_type = tgt_type_var.get()
+            params = action_param_values(target_type)
+            defs_key = action_target_defs_key(target_type)
+            values = self.definition_combo_values(defs_key) if defs_key else []
+            param_combo['values'] = params
             cb_target_id['values'] = values
-            cb_target_id.set(values[0] if values else "0")
-            self.upd_lbl()
-            self.draw_grid()
+            if reset_values:
+                param_combo.set(params[0] if params else "")
+                cb_target_id.set(values[0] if values else "0")
 
-        tgt_type_var.trace("w", on_modify_change)
-        on_modify_change()
+        def current_selected_action_index():
+            idx = action_ui_state.get("selected_index")
+            if idx is None or idx < 0 or idx >= len(data['actions']):
+                return None
+            return idx
 
-        # LISTBOX & SCROLLBAR
-        lb_frame = tk.Frame(p); lb_frame.pack(anchor=tk.CENTER, padx=0, pady=5)
-        lb = tk.Listbox(lb_frame, height=7, width=56, bg="#222", fg="white", selectbackground=LISTBOX_SELECTION_BG, selectforeground=LISTBOX_SELECTION_FG, font=("Arial", 9))
-        lb.pack(side=tk.LEFT)
-        sb = tk.Scrollbar(
-            lb_frame,
-            command=lb.yview,
-            bg="#00B8B8",
-            activebackground="#3DF0F0",
-            troughcolor="#0f1f1f",
-            width=16,
-            relief=tk.FLAT,
-            borderwidth=0,
-            highlightthickness=0,
-            elementborderwidth=1,
-            activerelief=tk.FLAT
-        ); sb.pack(side=tk.RIGHT, fill=tk.Y)
-        lb.config(yscrollcommand=sb.set)
-
-        def refresh_list():
+        def refresh_action_list(select_index=None):
             lb.delete(0, tk.END)
             for a in data['actions']:
                 lb.insert(tk.END, self.format_gem_action_for_list(a))
+            if select_index is not None and 0 <= select_index < len(data['actions']):
+                lb.selection_clear(0, tk.END)
+                lb.selection_set(select_index)
+                lb.activate(select_index)
+                lb.see(select_index)
+                action_ui_state["selected_index"] = select_index
+            elif current_selected_action_index() is None:
+                action_ui_state["selected_index"] = None
+
+        def load_action_into_controls(action):
+            action_ui_state["loading"] = True
+            action_ui_state["val_edit_snapshot_taken"] = False
+            target_type = action.get('target_type', 'modify_vehicle')
+            tgt_type_var.set(target_type)
+            refresh_action_target_controls(reset_values=False)
+            defs_key = action_target_defs_key(target_type)
+            cb_target_id.set(self.format_definition_value(defs_key, action.get('id', 0)) if defs_key else str(action.get('id', 0)))
+            params = action_param_values(target_type)
+            prm = action.get('param', params[0] if params else '')
+            param_combo.set(prm)
+            e_val.delete(0, tk.END)
+            e_val.insert(0, str(action.get('val', '')))
+            action_ui_state["loading"] = False
+
+        def refresh_action_list_row(index):
+            if index is None or index < 0 or index >= len(data['actions']):
+                return
+            lb.delete(index)
+            lb.insert(index, self.format_gem_action_for_list(data['actions'][index]))
+            lb.selection_clear(0, tk.END)
+            lb.selection_set(index)
+            lb.activate(index)
+            lb.see(index)
+            action_ui_state["selected_index"] = index
+
+        def update_selected_action_from_controls(event=None):
+            if action_ui_state.get("loading"):
+                return
+            idx = current_selected_action_index()
+            if idx is None:
+                return
+            try:
+                tid = self.parse_leading_int(cb_target_id.get())
+                if tid is None:
+                    return
+                prm = param_combo.get().strip()
+                if not prm:
+                    return
+                new_action = {
+                    'target_type': tgt_type_var.get(),
+                    'id': tid,
+                    'param': prm,
+                    'val': e_val.get(),
+                }
+                old_action = data['actions'][idx]
+                if old_action == new_action:
+                    return
+                self.push_undo_snapshot()
+                action_ui_state["val_edit_snapshot_taken"] = True
+                old_action.clear()
+                old_action.update(new_action)
+                self.dirty = True
+                refresh_action_list(select_index=idx)
+                self.refresh_special_list("GEM", redraw=False)
+            except Exception:
+                return
+
+        def update_selected_action_value_from_entry(event=None):
+            if action_ui_state.get("loading"):
+                return
+            idx = current_selected_action_index()
+            if idx is None:
+                return
+            try:
+                old_action = data['actions'][idx]
+                new_val = e_val.get()
+                if str(old_action.get('val', '')) == str(new_val):
+                    return
+                if not action_ui_state.get("val_edit_snapshot_taken", False):
+                    self.push_undo_snapshot()
+                    action_ui_state["val_edit_snapshot_taken"] = True
+                old_action['val'] = new_val
+                self.dirty = True
+                refresh_action_list_row(idx)
+                self.refresh_special_list("GEM", redraw=False)
+            except Exception:
+                return
+
+        def end_action_value_edit(event=None):
+            update_selected_action_value_from_entry(event)
+            action_ui_state["val_edit_snapshot_taken"] = False
+
+        def on_modify_change(*args):
+            if action_ui_state.get("loading"):
+                return
+            refresh_action_target_controls(reset_values=True)
+            update_selected_action_from_controls()
+
+        tgt_type_var.trace("w", on_modify_change); refresh_action_target_controls(reset_values=True)
+
+        lb_frame = tk.Frame(p); lb_frame.pack(anchor=tk.CENTER, padx=0, pady=4)
+        lb = tk.Listbox(lb_frame, height=5, width=56, bg="#222", fg="white", selectbackground=LISTBOX_SELECTION_BG, selectforeground=LISTBOX_SELECTION_FG, font=("Arial", 9))
+        lb.pack(side=tk.LEFT)
+        sb = tk.Scrollbar(lb_frame, command=lb.yview, bg="#00B8B8", activebackground="#3DF0F0", troughcolor="#0f1f1f", width=16, relief=tk.FLAT, borderwidth=0, highlightthickness=0, elementborderwidth=1, activerelief=tk.FLAT)
+        sb.pack(side=tk.RIGHT, fill=tk.Y); lb.config(yscrollcommand=sb.set)
+
+        def on_action_selected(event=None):
+            sel = lb.curselection()
+            if not sel:
+                action_ui_state["selected_index"] = None
+                return
+            idx = sel[0]
+            if 0 <= idx < len(data['actions']):
+                action_ui_state["selected_index"] = idx
+                load_action_into_controls(data['actions'][idx])
+
+        lb.bind("<<ListboxSelect>>", on_action_selected)
+        cb_target_id.bind("<<ComboboxSelected>>", update_selected_action_from_controls)
+        cb_target_id.bind("<Return>", update_selected_action_from_controls)
+        cb_target_id.bind("<FocusOut>", update_selected_action_from_controls)
+        param_combo.bind("<<ComboboxSelected>>", update_selected_action_from_controls)
+        param_combo.bind("<Return>", update_selected_action_from_controls)
+        param_combo.bind("<FocusOut>", update_selected_action_from_controls)
+        e_val.bind("<KeyRelease>", update_selected_action_value_from_entry)
+        e_val.bind("<Return>", end_action_value_edit)
+        e_val.bind("<FocusOut>", end_action_value_edit)
 
         def add_action():
             try:
                 tid = self.parse_leading_int(cb_target_id.get())
-                if tid is None:
-                    raise ValueError
-                val = e_val.get()
-                prm = param_combo.get().strip()
+                if tid is None: raise ValueError
+                val = e_val.get(); prm = param_combo.get().strip()
                 if not prm: return
-                self.push_undo_snapshot()
-                action = {'target_type': tgt_type_var.get(), 'id': tid, 'param': prm, 'val': val}
-                data['actions'].append(action)
-                refresh_list()
+                self.push_undo_snapshot(); action = {'target_type': tgt_type_var.get(), 'id': tid, 'param': prm, 'val': val}
+                data['actions'].append(action); self.dirty = True
+                new_idx = len(data['actions']) - 1
+                refresh_action_list(select_index=new_idx)
+                load_action_into_controls(action)
+                self.refresh_special_list("GEM", redraw=False)
             except: messagebox.showerror("Error", "Invalid ID")
 
         def del_action():
             sel = lb.curselection()
             if sel:
-                self.push_undo_snapshot()
-                data['actions'].pop(sel[0]); refresh_list()
-
-        refresh_list()
+                idx = sel[0]
+                self.push_undo_snapshot(); data['actions'].pop(idx); self.dirty = True
+                next_idx = min(idx, len(data['actions']) - 1) if data['actions'] else None
+                refresh_action_list(select_index=next_idx)
+                if next_idx is not None:
+                    load_action_into_controls(data['actions'][next_idx])
+                else:
+                    action_ui_state["selected_index"] = None
+                self.refresh_special_list("GEM", redraw=False)
+        refresh_action_list()
         f_btns = tk.Frame(p, bg="#1a1a1a"); f_btns.pack(anchor=tk.CENTER, pady=2)
         tk.Button(f_btns, text="ADD", command=add_action, bg="#005500", fg="white", width=8).pack(side=tk.LEFT, padx=10)
         tk.Button(f_btns, text="DEL", command=del_action, bg="#550000", fg="white", width=8).pack(side=tk.RIGHT, padx=10)
 
-        # 4. PLACE BUTTON
-        f_place = tk.Frame(p, bg="#1a1a1a")
-        f_place.pack(anchor=tk.CENTER, pady=10)
+        f_place = tk.Frame(p, bg="#1a1a1a"); f_place.pack(anchor=tk.CENTER, pady=(6, 2))
         tk.Button(f_place, text="[ PLACE GEM ON MAP ]", command=lambda: self.set_gem_tool(), bg="#00FF00", fg="black", width=24).pack(anchor=tk.CENTER)
-        self.upd_lbl()
-        self.draw_grid()
+        self.build_special_actions_and_list(p, "GEM")
+        self.upd_lbl(); self.draw_grid()
 
     def select_gem_slot(self, slot):
-        self.current_gem_slot = slot; self.build_gem_ui()
+        self.select_special_slot("GEM", slot)
 
     def set_gem_tool(self):
-        if not self.gems[self.current_gem_slot]['actions']:
-             messagebox.showinfo("Error", "Define actions in the Upgrade panel first.")
-             return
+        data = self.selected_special_data_or_none("GEM")
+        if not data:
+            messagebox.showinfo("Error", "Add or select a Gem first.")
+            return
+        if not data.get('actions'):
+            messagebox.showinfo("Error", "Define actions in the Upgrade panel first.")
+            return
         self.gem_tool = "GEM"
 
     def parse_definition_entry(self, kind, value, default_id, custom_name):
@@ -1336,6 +1622,9 @@ class UIMixin:
         if self.mode == "HOST":
             self.delete_selected_host()
             return "break"
+        if self.mode in ["GATE", "ITEM", "GEM"]:
+            self.delete_selected_special(self.mode)
+            return "break"
         return None
 
     def build_squad_ui(self):
@@ -1346,7 +1635,7 @@ class UIMixin:
             source_squad = self.squads[self.current_squad_index]
         self.ensure_squad_defaults(source_squad)
 
-        tk.Label(p, text="SQUAD PLACER", bg="#FF4400", fg="black", font=("bold", 12)).pack(fill=tk.X, pady=(10, 6))
+        tk.Label(p, text="SQUAD PLACER", bg="#FF4400", fg="black", font=("Arial", 12, "bold")).pack(fill=tk.X, pady=(10, 6))
 
         editor = tk.Frame(p, bg="#1a1a1a")
         editor.pack(fill=tk.X, padx=12, pady=(2, 6))
@@ -1787,7 +2076,7 @@ class UIMixin:
             source_host = self.host_stations[self.current_host_index]
         self.ensure_host_defaults(source_host)
 
-        tk.Label(p, text="HOST STATION PLACER", bg="#FFD700", fg="black", font=("bold", 12)).pack(fill=tk.X, pady=(10, 6))
+        tk.Label(p, text="HOST STATION PLACER", bg="#FFD700", fg="black", font=("Arial", 12, "bold")).pack(fill=tk.X, pady=(10, 6))
 
         editor = tk.Frame(p, bg="#1a1a1a")
         editor.pack(fill=tk.X, padx=12, pady=(2, 6))

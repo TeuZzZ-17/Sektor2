@@ -854,7 +854,7 @@ class MapIOMixin:
         self.gems = {i: {'x': -1, 'y': -1, 'blg': 50, 'type': 3, 'actions': [], 'hidden': False} for i in range(1, MAX_SPECIAL_SLOTS + 1)}
         self.script_content = DEFAULT_SCRIPT_CONTENT
         self.script_text_widget = None
-        self.visible_gate_slots = 1; self.visible_item_slots = 1; self.visible_gem_slots = 1
+        self.visible_gate_slots = 0; self.visible_item_slots = 0; self.visible_gem_slots = 0
         self.squads = []; self.current_squad_index = -1
         self.current_squad_data = {'owner': 1, 'veh': 1, 'num': 1, 'hidden': False, 'useable': False, 'custom_name': None}
         self.player_owner = 1
