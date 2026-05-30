@@ -287,7 +287,7 @@ class UIMixin:
             self.cnt_frame,
             text="OWNER EDITOR (00 - 07)",
             bg="#CC6600",
-            fg="white",
+            fg="black",
             font=("Arial", 12, "bold")
         )
 
@@ -472,7 +472,7 @@ class UIMixin:
 
         if m == "HGT":
             self.build_height_input_panel()
-            self.panels['HGT_INPUT'].pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+            self.panels['HGT_INPUT'].pack(fill=tk.BOTH, expand=True)
         elif m in self.panels:
             if m == "GATE": self.build_gate_ui()
             elif m == "ITEM": self.build_item_ui()
@@ -487,7 +487,7 @@ class UIMixin:
             # Keep the orange title bar for visual consistency with Height Editor,
             # but do not show the palette scrollbar here.
             if hasattr(self, "owner_header"):
-                self.owner_header.pack(fill=tk.X, pady=(0, 6))
+                self.owner_header.pack(fill=tk.X, pady=(10, 6))
             self.cv_pal.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
             self.refresh_palette_layout(force_full=True)
         else:
@@ -643,7 +643,7 @@ class UIMixin:
     def build_height_input_panel(self):
         p = self.panels['HGT_INPUT']
         for w in p.winfo_children(): w.destroy()
-        tk.Label(p, text="HEIGHT EDITOR (0 - 60)", bg="#660066", fg="white", font=("Arial",12,"bold")).pack(fill=tk.X, pady=(10,20))
+        tk.Label(p, text="HEIGHT EDITOR (0 - 60)", bg="#660066", fg="black", font=("Arial", 12, "bold")).pack(fill=tk.X, pady=(10, 6))
 
         f = tk.Frame(p, bg="#1a1a1a"); f.pack(pady=10)
 
@@ -1191,7 +1191,7 @@ class UIMixin:
     def build_item_ui(self):
         panel = self.panels['ITEM']
         for w in panel.winfo_children(): w.destroy()
-        tk.Label(panel, text="BOMB PLACER", bg="#FF00FF", fg="white", font=("Arial", 12, "bold")).pack(fill=tk.X, pady=(10, 6))
+        tk.Label(panel, text="BOMB PLACER", bg="#FF00FF", fg="black", font=("Arial", 12, "bold")).pack(fill=tk.X, pady=(10, 6))
         p = tk.Frame(panel, bg="#1a1a1a")
         p.pack(fill=tk.BOTH, expand=True, anchor=tk.NW, padx=12, pady=6)
 
