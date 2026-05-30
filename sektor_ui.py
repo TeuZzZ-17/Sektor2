@@ -59,6 +59,23 @@ class UIMixin:
     ]
     HOST_ENERGY_PRESET_VALUES = [label for label, value in HOST_ENERGY_PRESETS] + ["Custom"]
 
+    HOST_RELOAD_PRESETS = [
+        ("Very Low", 153125),
+        ("Low", 165625),
+        ("Medium", 500000),
+        ("Strong", 600000),
+        ("Very Strong", 666666),
+    ]
+    HOST_RELOAD_PRESET_VALUES = [label for label, value in HOST_RELOAD_PRESETS] + ["Custom"]
+
+    HOST_VIEWANGLE_PRESETS = [
+        ("Forward", 0),
+        ("Left", 90),
+        ("Back", 180),
+        ("Right", 270),
+    ]
+    HOST_VIEWANGLE_PRESET_VALUES = [label for label, value in HOST_VIEWANGLE_PRESETS] + ["Custom"]
+
     def get_faction_display_name(self, owner):
         if owner in self.FACTION_DISPLAY_NAMES:
             return self.FACTION_DISPLAY_NAMES[owner]
@@ -107,6 +124,50 @@ class UIMixin:
         preset = "Custom" if energy is None else self.host_energy_preset_for_value(energy)
         if hasattr(self, "cb_host_energy_preset") and self.cb_host_energy_preset.winfo_exists():
             self.cb_host_energy_preset.set(preset)
+
+    def host_reload_preset_for_value(self, reload_const):
+        for label, value in self.HOST_RELOAD_PRESETS:
+            if reload_const == value:
+                return label
+        return "Custom"
+
+    def parse_host_reload_preset_value(self, preset):
+        for label, value in self.HOST_RELOAD_PRESETS:
+            if preset == label:
+                return value
+        return None
+
+    def update_host_reload_controls(self, reload_const=None):
+        if reload_const is None:
+            try:
+                reload_const = int(self.e_host_reload.get())
+            except:
+                reload_const = None
+        preset = "Custom" if reload_const is None else self.host_reload_preset_for_value(reload_const)
+        if hasattr(self, "cb_host_reload_preset") and self.cb_host_reload_preset.winfo_exists():
+            self.cb_host_reload_preset.set(preset)
+
+    def host_viewangle_preset_for_value(self, viewangle):
+        for label, value in self.HOST_VIEWANGLE_PRESETS:
+            if viewangle == value:
+                return label
+        return "Custom"
+
+    def parse_host_viewangle_preset_value(self, preset):
+        for label, value in self.HOST_VIEWANGLE_PRESETS:
+            if preset == label:
+                return value
+        return None
+
+    def update_host_viewangle_controls(self, viewangle=None):
+        if viewangle is None:
+            try:
+                viewangle = int(float(self.e_host_viewangle.get()))
+            except:
+                viewangle = None
+        preset = "Custom" if viewangle is None else self.host_viewangle_preset_for_value(viewangle)
+        if hasattr(self, "cb_host_viewangle_preset") and self.cb_host_viewangle_preset.winfo_exists():
+            self.cb_host_viewangle_preset.set(preset)
 
     def format_gem_model_value(self, model_id):
         return self.GEM_MODEL_LABELS.get(model_id, str(model_id))
@@ -180,32 +241,44 @@ class UIMixin:
 
         # --- LEFT PANEL ---
         tb_pal = tk.Frame(self.f_left, bg="#2a2a2a", height=36); tb_pal.pack(fill=tk.X)
-        self.lbl_sel = tk.Label(tb_pal, text="SEL: 00", bg="#2a2a2a", fg="#00FFFF", font=("Courier", 11, "bold"), width=10, anchor="w")
-        self.lbl_sel.pack(side=tk.LEFT, padx=5)
+        self.lbl_sel = tk.Label(tb_pal, text="00", bg="#2a2a2a", fg="#00FFFF", font=("Courier", 11, "bold"), width=4, anchor="w")
+        self.lbl_sel.pack(side=tk.LEFT, padx=(5, 2))
 
         # CUSTOM ID LABELS & ENTRY
         self.f_custom_inputs = tk.Frame(tb_pal, bg="#2a2a2a")
         
         # ID Input
-        self.lbl_custom_title = tk.Label(self.f_custom_inputs, text="ID:", bg="#2a2a2a", fg="#aaa", font=("Arial",8))
-        self.lbl_custom_title.pack(side=tk.LEFT, padx=(5,1))
+        self.lbl_custom_title = tk.Label(self.f_custom_inputs, text="Custom Hex:", bg="#2a2a2a", fg="#aaa", font=("Arial",8))
+        self.lbl_custom_title.pack(side=tk.LEFT, padx=(2,1))
         
         self.entry_custom = tk.Entry(self.f_custom_inputs, width=4, bg="#111", fg="white", insertbackground="white")
         self.entry_custom.pack(side=tk.LEFT, padx=1)
         self.entry_custom.bind("<KeyRelease>", self.on_custom_input)
 
         # Name Input
-        tk.Label(self.f_custom_inputs, text="Name:", bg="#2a2a2a", fg="#aaa", font=("Arial",8)).pack(side=tk.LEFT, padx=(5,1))
-        self.entry_custom_name = tk.Entry(self.f_custom_inputs, width=10, bg="#111", fg="#FFFF00", insertbackground="white")
+        tk.Label(self.f_custom_inputs, text="Custom Name:", bg="#2a2a2a", fg="#aaa", font=("Arial",8)).pack(side=tk.LEFT, padx=(4,1))
+        self.entry_custom_name = tk.Entry(self.f_custom_inputs, width=16, bg="#111", fg="#FFFF00", insertbackground="white")
         self.entry_custom_name.pack(side=tk.LEFT, padx=1)
         self.entry_custom_name.bind("<KeyRelease>", self.on_custom_name_input)
 
-        zoom_sty = {'bg':'#333','fg':'white','padx':5,'font':("Arial",8)}
-        self.btn_zm_p_out = tk.Button(tb_pal, text="-", command=lambda: self.zoom_pal(-16), **zoom_sty)
-        self.btn_zm_p_in = tk.Button(tb_pal, text="+", command=lambda: self.zoom_pal(16), **zoom_sty)
-
-        self.btn_zm_p_out.pack(side=tk.RIGHT, padx=2)
-        self.btn_zm_p_in.pack(side=tk.RIGHT, padx=2)
+        self.palette_zoom_var = tk.IntVar(value=self.zoom_p)
+        self.sld_zoom_p = tk.Scale(
+            tb_pal,
+            from_=32,
+            to=256,
+            orient=tk.HORIZONTAL,
+            variable=self.palette_zoom_var,
+            command=self.set_palette_zoom_from_slider,
+            length=88,
+            showvalue=False,
+            resolution=8,
+            bg="#2a2a2a",
+            fg="white",
+            troughcolor="#444",
+            highlightthickness=0
+        )
+        # Slider applies only to Sector/Building palette thumbnail zoom.
+        self.sld_zoom_p.pack(side=tk.RIGHT, padx=(2, 6))
 
         self.cnt_frame = tk.Frame(self.f_left, bg="#1a1a1a")
         self.cnt_frame.pack(fill=tk.BOTH, expand=True)
@@ -336,6 +409,18 @@ class UIMixin:
         self.root.bind_all("<Delete>", self.delete_selected_object_from_key)
         self.update_history_buttons()
 
+
+    def set_palette_zoom_from_slider(self, value):
+        try:
+            new_zoom = int(float(value))
+        except:
+            return
+        new_zoom = max(32, min(256, new_zoom))
+        if self.zoom_p == new_zoom:
+            return
+        self.zoom_p = new_zoom
+        self.draw_palette()
+
     def update_window_title(self):
         title = f"{APP_NAME} - Env: {self.set_folder.upper()}"
         if getattr(self, 'current_filepath', None):
@@ -363,18 +448,17 @@ class UIMixin:
         for p in self.panels.values(): p.pack_forget()
 
         if m in ["TYPE", "BLG"]:
-            self.lbl_sel.pack(side=tk.LEFT, padx=5)
-            self.btn_zm_p_out.pack(side=tk.RIGHT, padx=2)
-            self.btn_zm_p_in.pack(side=tk.RIGHT, padx=2)
+            self.lbl_sel.pack(side=tk.LEFT, padx=(5, 2))
+            if hasattr(self, "palette_zoom_var"):
+                self.palette_zoom_var.set(self.zoom_p)
+            self.sld_zoom_p.pack(side=tk.RIGHT, padx=(2, 6))
 
-            self.f_custom_inputs.pack(side=tk.LEFT, padx=5)
-            if m == "TYPE": self.lbl_custom_title.config(text="Sector Hex:")
-            else: self.lbl_custom_title.config(text="Building Hex:")
+            self.f_custom_inputs.pack(side=tk.LEFT, padx=(2, 2))
+            self.lbl_custom_title.config(text="Custom Hex:")
             
         else:
             self.lbl_sel.pack_forget()
-            self.btn_zm_p_in.pack_forget()
-            self.btn_zm_p_out.pack_forget()
+            self.sld_zoom_p.pack_forget()
             self.f_custom_inputs.pack_forget()
 
         if m == "HGT":
@@ -440,7 +524,7 @@ class UIMixin:
         else:
             v = self.sel['type'] if self.mode=="TYPE" else self.sel['own'] if self.mode=="OWN" else self.sel['blg']
             t = f"{v:02X}" if isinstance(v,int) else str(v)
-            self.lbl_sel.config(text=f"{self.mode}: {t}")
+            self.lbl_sel.config(text=t)
 
             if self.mode in ["TYPE", "BLG"] and isinstance(v, str):
                 try:
@@ -1494,14 +1578,9 @@ class UIMixin:
         else:
             self.deselect_squad()
 
-    def delete_selected_squad(self):
-        idx = self.current_squad_index
-        if idx == -1 and hasattr(self, 'lb_squads') and self.lb_squads.winfo_exists():
-            sel = self.lb_squads.curselection()
-            if sel:
-                idx = sel[0]
+    def delete_squad_index(self, idx):
         if idx < 0 or idx >= len(self.squads):
-            return
+            return False
         cell = self.get_squad_cell(idx)
         self.push_undo_snapshot()
         self.squads.pop(idx)
@@ -1511,6 +1590,15 @@ class UIMixin:
         self.refresh_squad_list(redraw=False)
         self.redraw_cells(cell)
         self.dirty = True
+        return True
+
+    def delete_selected_squad(self):
+        idx = self.current_squad_index
+        if idx == -1 and hasattr(self, 'lb_squads') and self.lb_squads.winfo_exists():
+            sel = self.lb_squads.curselection()
+            if sel:
+                idx = sel[0]
+        self.delete_squad_index(idx)
 
     def delete_all_squads(self):
         if not self.squads:
@@ -1787,15 +1875,19 @@ class UIMixin:
         self.e_host_y.grid(row=1, column=1, pady=(4, 0), sticky="w")
         self.e_host_y.insert(0, self.format_host_altitude_value(source_host.get('pos_y', DEFAULT_HOST_POS_Y)))
 
-        tk.Label(f_stats, text="Reload Const:", fg="white", bg="#1a1a1a", width=11, anchor="e").grid(row=2, column=0, padx=(0, 6), pady=(4, 0), sticky="e")
+        tk.Label(f_stats, text="Energy Reload Rate:", fg="white", bg="#1a1a1a", width=17, anchor="e").grid(row=2, column=0, padx=(0, 6), pady=(4, 0), sticky="e")
         self.e_host_reload = tk.Entry(f_stats, width=10)
         self.e_host_reload.grid(row=2, column=1, pady=(4, 0), sticky="w")
         self.e_host_reload.insert(0, str(source_host.get('reload_const', DEFAULT_HOST_RELOAD_CONST)))
+        self.cb_host_reload_preset = ttk.Combobox(f_stats, values=self.HOST_RELOAD_PRESET_VALUES, state="readonly", width=12)
+        self.cb_host_reload_preset.grid(row=2, column=2, padx=(8, 0), pady=(4, 0), sticky="w")
 
-        tk.Label(f_stats, text="View Angle:", fg="white", bg="#1a1a1a", width=11, anchor="e").grid(row=3, column=0, padx=(0, 6), pady=(4, 0), sticky="e")
+        tk.Label(f_stats, text="View Angle:", fg="white", bg="#1a1a1a", width=17, anchor="e").grid(row=3, column=0, padx=(0, 6), pady=(4, 0), sticky="e")
         self.e_host_viewangle = tk.Entry(f_stats, width=10)
         self.e_host_viewangle.grid(row=3, column=1, pady=(4, 0), sticky="w")
         self.e_host_viewangle.insert(0, str(source_host.get('viewangle', DEFAULT_HOST_VIEWANGLE)))
+        self.cb_host_viewangle_preset = ttk.Combobox(f_stats, values=self.HOST_VIEWANGLE_PRESET_VALUES, state="readonly", width=12)
+        self.cb_host_viewangle_preset.grid(row=3, column=2, padx=(8, 0), pady=(4, 0), sticky="w")
 
         def upd_host_stats(ev=None):
             try:
@@ -1829,6 +1921,8 @@ class UIMixin:
                 self.current_host_data['reload_const'] = new_reload_const
                 self.current_host_data['viewangle'] = new_viewangle
             self.update_host_energy_controls(new_energy)
+            self.update_host_reload_controls(new_reload_const)
+            self.update_host_viewangle_controls(new_viewangle)
         self.e_host_en.bind("<KeyRelease>", upd_host_stats)
         self.e_host_y.bind("<KeyRelease>", upd_host_stats)
         self.e_host_reload.bind("<KeyRelease>", upd_host_stats)
@@ -1843,7 +1937,30 @@ class UIMixin:
             self.e_host_en.insert(0, str(preset_energy))
             upd_host_stats()
         self.cb_host_energy_preset.bind("<<ComboboxSelected>>", on_energy_preset_select)
-        self.update_host_energy_controls(source_host['energy'])
+
+        def on_reload_preset_select(event=None):
+            preset_reload = self.parse_host_reload_preset_value(self.cb_host_reload_preset.get())
+            if preset_reload is None:
+                self.update_host_reload_controls()
+                return
+            self.e_host_reload.delete(0, tk.END)
+            self.e_host_reload.insert(0, str(preset_reload))
+            upd_host_stats()
+        self.cb_host_reload_preset.bind("<<ComboboxSelected>>", on_reload_preset_select)
+
+        def on_viewangle_preset_select(event=None):
+            preset_viewangle = self.parse_host_viewangle_preset_value(self.cb_host_viewangle_preset.get())
+            if preset_viewangle is None:
+                self.update_host_viewangle_controls()
+                return
+            self.e_host_viewangle.delete(0, tk.END)
+            self.e_host_viewangle.insert(0, str(preset_viewangle))
+            upd_host_stats()
+        self.cb_host_viewangle_preset.bind("<<ComboboxSelected>>", on_viewangle_preset_select)
+
+        self.update_host_energy_controls(source_host.get('energy'))
+        self.update_host_reload_controls(source_host.get('reload_const', DEFAULT_HOST_RELOAD_CONST))
+        self.update_host_viewangle_controls(source_host.get('viewangle', DEFAULT_HOST_VIEWANGLE))
 
         f_ai = tk.Frame(editor, bg="#1a1a1a"); f_ai.pack(fill=tk.X, pady=(3, 0))
         tk.Label(f_ai, text="AI Preset:", fg="white", bg="#1a1a1a", width=11, anchor="e").grid(row=0, column=0, padx=(0, 6), sticky="e")
@@ -1899,7 +2016,7 @@ class UIMixin:
                 if reload_const < 0:
                     raise ValueError
             except:
-                messagebox.showwarning("Invalid Host", "Energy, Altitude, Reload Const and View Angle must be numbers.")
+                messagebox.showwarning("Invalid Host", "Energy, Altitude, Energy Reload Rate and View Angle must be numbers.")
                 return
             previous_cell = self.get_host_cell(self.current_host_index)
             source_ai = copy.deepcopy(self.ensure_host_ai(self.get_active_host_data_for_ui()))
@@ -2041,6 +2158,8 @@ class UIMixin:
             f = h['owner']
             self.btn_host_fac.config(text=self.format_player_owner_value(f), fg=FACTIONS[f][1] if FACTIONS[f][1] else "white")
         self.update_host_energy_controls(h['energy'])
+        self.update_host_reload_controls(h.get('reload_const', DEFAULT_HOST_RELOAD_CONST))
+        self.update_host_viewangle_controls(h.get('viewangle', DEFAULT_HOST_VIEWANGLE))
         self.update_host_ai_controls_state()
         if redraw:
             self.redraw_cells(previous_cell, selected_cell)
@@ -2054,14 +2173,9 @@ class UIMixin:
         else:
             self.deselect_host()
 
-    def delete_selected_host(self):
-        idx = self.current_host_index
-        if idx == -1 and hasattr(self, 'lb_hosts') and self.lb_hosts.winfo_exists():
-            sel = self.lb_hosts.curselection()
-            if sel:
-                idx = sel[0]
+    def delete_host_index(self, idx):
         if idx < 0 or idx >= len(self.host_stations):
-            return
+            return False
         cell = self.get_host_cell(idx)
         self.push_undo_snapshot()
         self.host_stations.pop(idx)
@@ -2072,6 +2186,15 @@ class UIMixin:
         self.redraw_cells(cell)
         self.refresh_tech_panel_if_visible()
         self.dirty = True
+        return True
+
+    def delete_selected_host(self):
+        idx = self.current_host_index
+        if idx == -1 and hasattr(self, 'lb_hosts') and self.lb_hosts.winfo_exists():
+            sel = self.lb_hosts.curselection()
+            if sel:
+                idx = sel[0]
+        self.delete_host_index(idx)
 
     def delete_all_hosts(self):
         if not self.host_stations:

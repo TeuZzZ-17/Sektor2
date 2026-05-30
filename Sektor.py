@@ -79,8 +79,8 @@ class SektorEditor(
         self.lvl_info = {
             'title': "Untitled Map",
             'sky': "objects/x7.bas",
-            'mbmap': "MB_53.IFF",
-            'dbmap': "DB_53.IFF",
+            'mbmap': "",
+            'dbmap': "",
             'music': "None",   
             'movie': "None"    
         }

@@ -329,8 +329,8 @@ class DialogMixin:
         self.lvl_info = {
             'title': "Untitled Map",
             'sky': "objects/x7.bas",
-            'mbmap': "MB_53.IFF",
-            'dbmap': "DB_53.IFF",
+            'mbmap': "",
+            'dbmap': "",
             'music': "None",
             'movie': "None"
         }
@@ -458,6 +458,8 @@ class DialogMixin:
 
         mb_values, mb_preview_paths = get_art_options("MB")
         db_values, db_preview_paths = get_art_options("DB")
+        mb_values = ["None"] + mb_values
+        db_values = ["None"] + db_values
         if not hasattr(self, "mbpix_previews"):
             self.mbpix_previews = {}
 
@@ -465,12 +467,12 @@ class DialogMixin:
         tk.Label(f_maps, text="Briefing Art (MB):", bg="#222", fg="#AAA").grid(row=0, column=0, padx=5, pady=1, sticky="e")
         cb_mb = ttk.Combobox(f_maps, values=mb_values, width=20)
         cb_mb.grid(row=0, column=1, padx=5, pady=1, sticky="w")
-        cb_mb.set(self.get_briefing_art_base_name(self.lvl_info.get('mbmap', 'MB_53.IFF')) or "MB_53")
+        cb_mb.set(self.get_briefing_art_base_name(self.lvl_info.get('mbmap')) or "MB_01")
 
         tk.Label(f_maps, text="Debriefing Art (DB):", bg="#222", fg="#AAA").grid(row=1, column=0, padx=5, pady=1, sticky="e")
         cb_db = ttk.Combobox(f_maps, values=db_values, width=20)
         cb_db.grid(row=1, column=1, padx=5, pady=1, sticky="w")
-        cb_db.set(self.get_briefing_art_base_name(self.lvl_info.get('dbmap', 'DB_53.IFF')) or "DB_53")
+        cb_db.set(self.get_briefing_art_base_name(self.lvl_info.get('dbmap')) or "DB_01")
 
         tk.Label(
             f_maps,
@@ -632,8 +634,8 @@ class DialogMixin:
 
         def save():
             new_title = e_title.get()
-            new_mbmap = self.normalize_briefing_art_for_export(cb_mb.get(), "MB_53.IFF")
-            new_dbmap = self.normalize_briefing_art_for_export(cb_db.get(), "DB_53.IFF")
+            new_mbmap = self.normalize_briefing_art_for_export(cb_mb.get())
+            new_dbmap = self.normalize_briefing_art_for_export(cb_db.get())
             new_music = cb_music.get()
             
             raw_movie = cb_movie.get().strip()

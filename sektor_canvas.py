@@ -403,17 +403,29 @@ class CanvasMixin:
             self.dirty = True
         return changed_cells
 
+    def find_squad_at(self, cx, cy, exclude_index=None):
+        for i in reversed(range(len(self.squads))):
+            if exclude_index is not None and i == exclude_index:
+                continue
+            s = self.squads[i]
+            if s['x'] == cx and s['y'] == cy:
+                return i
+        return -1
+
     def has_squad(self, cx, cy, exclude_index=None):
-        for i, s in enumerate(self.squads):
-            if exclude_index is not None and i == exclude_index: continue
-            if s['x'] == cx and s['y'] == cy: return True
-        return False
+        return self.find_squad_at(cx, cy, exclude_index=exclude_index) != -1
+
+    def find_host_at(self, cx, cy, exclude_index=None):
+        for i in reversed(range(len(self.host_stations))):
+            if exclude_index is not None and i == exclude_index:
+                continue
+            h = self.host_stations[i]
+            if h['x'] == cx and h['y'] == cy:
+                return i
+        return -1
 
     def has_host(self, cx, cy, exclude_index=None):
-        for i, h in enumerate(self.host_stations):
-            if exclude_index is not None and i == exclude_index: continue
-            if h['x'] == cx and h['y'] == cy: return True
-        return False
+        return self.find_host_at(cx, cy, exclude_index=exclude_index) != -1
 
     def get_cell_label_font(self, size):
         if not hasattr(self, "_cell_label_fonts"):
@@ -1125,14 +1137,24 @@ class CanvasMixin:
 
         self.cv_pal.delete("all")
         w = self.cv_pal.winfo_width() or 300
-        sz = self.zoom_p
+        # Sector/Building palettes are zoomable. Owner palette must stay fixed-size
+        # and must not be affected by the Sector/Building thumbnail zoom slider.
         if self.mode == "OWN":
-            cw, ch = max(sz + 5, 135), sz + 30
-        elif self.mode == "BLG":
-            cw, ch = max(sz + 5, 185), sz + 30
+            cols = 3
+            cw = max(1, w // cols)
+            # Owner cards stay fixed-size and independent from the thumbnail
+            # zoom slider, but must still fit cleanly inside three columns.
+            sz = max(90, min(170, cw - 18))
+            if sz + 12 > cw:
+                sz = max(32, cw - 12)
+            ch = sz + 35
         else:
-            cw, ch = sz+5, sz+25
-        cols = max(1, w // (cw+5))
+            sz = self.zoom_p
+            # Building uses the same dynamic grid behavior as Sector: zooming out
+            # increases the number of visible columns instead of keeping a fixed
+            # two-column layout.
+            cw, ch = sz + 5, sz + 25
+            cols = max(1, w // (cw+5))
         items = self.get_current_items()
 
         if not items: return
@@ -1141,9 +1163,13 @@ class CanvasMixin:
         r, c = 0, 0
         label_font = self.get_palette_label_font()
         for it in items:
-            cell_x, y = c*cw+10, r*ch+10
-            x = cell_x + ((cw - sz) // 2 if self.mode in ["OWN", "BLG"] else 0)
-            label_x = cell_x + (cw // 2) if self.mode == "BLG" else x + sz//2
+            if self.mode == "OWN":
+                cell_x, y = c * cw, r * ch + 10
+                x = cell_x + max(6, (cw - sz) // 2)
+            else:
+                cell_x, y = c * cw + 10, r * ch + 10
+                x = cell_x
+            label_x = x + sz//2
             if it==sel_val:
                 self.cv_pal.create_rectangle(x-6, y-6, x+sz+6, y+sz+23, fill=SELECTION_SHADOW_COLOR, outline="")
                 self.cv_pal.create_rectangle(x-3, y-3, x+sz+3, y+sz+20, fill="#004A56", outline=SELECTION_COLOR, width=3)
@@ -1208,7 +1234,14 @@ class CanvasMixin:
         try: idx = items.index(curr); new_idx = (idx + d) % len(items); new_val = items[new_idx]; self.set_sel(new_val)
         except ValueError: self.set_sel(items[0])
 
-    def zoom_pal(self, d): self.zoom_p = max(32, min(256, self.zoom_p+d)); self.draw_palette()
+    def zoom_pal(self, d):
+        self.zoom_p = max(32, min(256, self.zoom_p + d))
+        if hasattr(self, "palette_zoom_var"):
+            try:
+                self.palette_zoom_var.set(self.zoom_p)
+            except:
+                pass
+        self.draw_palette()
 
     def zoom_map(self, d):
         self.zoom_m = max(self.zoom_m_min, min(self.zoom_m_max, self.zoom_m+d))
@@ -1516,6 +1549,12 @@ class CanvasMixin:
                 return
 
             if str(e.type) == '4': # Click
+                hovered_idx = self.find_squad_at(cx, cy)
+                if hovered_idx != -1 and hovered_idx != self.current_squad_index:
+                    self.select_squad_index(hovered_idx)
+                    self._drag_squad_idx = hovered_idx
+                    return
+
                 idx = self.current_squad_index
                 if idx == -1 or idx >= len(self.squads):
                     messagebox.showwarning("No Squad Selected", "Add a squad to the list, select it, then click the map to place it.")
@@ -1559,6 +1598,12 @@ class CanvasMixin:
                 return
 
             if str(e.type) == '4': # Click
+                hovered_idx = self.find_host_at(cx, cy)
+                if hovered_idx != -1 and hovered_idx != self.current_host_index:
+                    self.select_host_index(hovered_idx)
+                    self._drag_host_idx = hovered_idx
+                    return
+
                 idx = self.current_host_index
                 if idx == -1 or idx >= len(self.host_stations):
                     messagebox.showwarning("No Host Selected", "Add a Host Station to the list, select it, then click the map to place it.")
@@ -1609,29 +1654,31 @@ class CanvasMixin:
                 self._map_right_edit_snapshot_taken = True
             self.dirty = True
 
-        # SQUAD SELECTION
+        # SQUAD SELECTION / DELETION
         if self.mode == "SQUAD":
-             for i in reversed(range(len(self.squads))):
-                 s = self.squads[i]
-                 if s['x'] == cx and s['y'] == cy:
-                     if i == self.current_squad_index:
-                         self.deselect_squad()
-                     else:
-                         self.select_squad_index(i)
-                     break
-             return
+            idx = self.find_squad_at(cx, cy)
+            if idx == -1:
+                return
+            if idx == self.current_squad_index:
+                self.deselect_squad()
+            elif self.current_squad_index == -1:
+                self.delete_squad_index(idx)
+            else:
+                self.select_squad_index(idx)
+            return
 
-        # HOST SELECTION
+        # HOST SELECTION / DELETION
         if self.mode == "HOST":
-             for i in reversed(range(len(self.host_stations))):
-                 h = self.host_stations[i]
-                 if h['x'] == cx and h['y'] == cy:
-                     if i == self.current_host_index:
-                         self.deselect_host()
-                     else:
-                         self.select_host_index(i)
-                     break
-             return
+            idx = self.find_host_at(cx, cy)
+            if idx == -1:
+                return
+            if idx == self.current_host_index:
+                self.deselect_host()
+            elif self.current_host_index == -1:
+                self.delete_host_index(idx)
+            else:
+                self.select_host_index(idx)
+            return
 
         if self.mode == "TYPE":
             if self.grids['type'][cy][cx] != '00':

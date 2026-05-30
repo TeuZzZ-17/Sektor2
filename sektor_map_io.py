@@ -48,12 +48,16 @@ class MapIOMixin:
         name = os.path.splitext(parts[-1].strip())[0]
         return name
 
-    def normalize_briefing_art_for_export(self, value, default_name):
-        base_name = self.get_briefing_art_base_name(value)
-        if not base_name:
+    def normalize_briefing_art_for_export(self, value, default_name=""):
+        raw_value = str(value or "").strip().strip("\"'")
+        if not raw_value or raw_value.lower() in {"none", "no", "null", "-", "--"}:
+            return ""
+
+        base_name = self.get_briefing_art_base_name(raw_value)
+        if not base_name and default_name:
             base_name = self.get_briefing_art_base_name(default_name)
         if not base_name:
-            return default_name
+            return ""
         return f"{base_name}.IFF"
 
     def split_user_script_block(self, raw_text):
@@ -258,6 +262,14 @@ class MapIOMixin:
             self.mw, self.mh = w, h; self.reset_map(confirm=False, track_history=False)
             self.script_content = loaded_script_content
             self.script_text_widget = None
+            self.lvl_info = {
+                'title': "Untitled Map",
+                'sky': "objects/x7.bas",
+                'mbmap': "",
+                'dbmap': "",
+                'music': "None",
+                'movie': "None"
+            }
             self.tech = {i: {'veh': [], 'blg': []} for i in range(1, 8)}
             self.custom_tech_names = {}
 
@@ -447,10 +459,10 @@ class MapIOMixin:
                              self.lvl_info['movie'] = self.get_movie_filename(raw_mov) or "None"
                     elif reading_mb:
                         if token_lower == 'name':
-                            self.lvl_info['mbmap'] = self.normalize_briefing_art_for_export(get_val(iterator), "MB_53.IFF")
+                            self.lvl_info['mbmap'] = self.normalize_briefing_art_for_export(get_val(iterator))
                     elif reading_db:
                         if token_lower == 'name':
-                            self.lvl_info['dbmap'] = self.normalize_briefing_art_for_export(get_val(iterator), "DB_53.IFF")
+                            self.lvl_info['dbmap'] = self.normalize_briefing_art_for_export(get_val(iterator))
 
                     elif current_squad:
                         if token_lower == 'owner': current_squad['owner'] = int(get_val(iterator))
@@ -658,19 +670,22 @@ class MapIOMixin:
 
                 w("end")
                 w(";------------------------------------------------------------")
-                mbmap = self.normalize_briefing_art_for_export(self.lvl_info.get('mbmap'), "MB_53.IFF")
-                dbmap = self.normalize_briefing_art_for_export(self.lvl_info.get('dbmap'), "DB_53.IFF")
-                w("begin_mbmap")
-                w(f"   name          =  {mbmap}")
-                w("   size_x        = 480")
-                w("   size_y        = 480")
-                w("end")
-                w("begin_dbmap")
-                w(f"   name          =  {dbmap}")
-                w("   size_x        = 480")
-                w("   size_y        = 480")
-                w("end")
-                w(";------------------------------------------------------------")
+                mbmap = self.normalize_briefing_art_for_export(self.lvl_info.get('mbmap'))
+                dbmap = self.normalize_briefing_art_for_export(self.lvl_info.get('dbmap'))
+                if mbmap:
+                    w("begin_mbmap")
+                    w(f"   name          =  {mbmap}")
+                    w("   size_x        = 480")
+                    w("   size_y        = 480")
+                    w("end")
+                    w(";------------------------------------------------------------")
+                if dbmap:
+                    w("begin_dbmap")
+                    w(f"   name          =  {dbmap}")
+                    w("   size_x        = 480")
+                    w("   size_y        = 480")
+                    w("end")
+                    w(";------------------------------------------------------------")
                 for i in range(1, self.visible_gate_slots + 1):
                     g = self.gates[i]
                     if g['x'] != -1:
