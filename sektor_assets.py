@@ -493,6 +493,11 @@ class AssetMixin:
             src = Image.new("RGBA", (sz, sz), (0, 255, 255, 140))
 
         if src:
+            if cat == 'host' and extra == 'transparent':
+                src = src.convert("RGBA").copy()
+                alpha = src.getchannel("A")
+                alpha = alpha.point(lambda p: int(p * 0.65))
+                src.putalpha(alpha)
             tk_img = ImageTk.PhotoImage(src.resize((sz, sz), Image.Resampling.NEAREST))
             self.cache[key] = tk_img
             return tk_img

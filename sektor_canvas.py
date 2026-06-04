@@ -696,6 +696,27 @@ class CanvasMixin:
             return
         index.setdefault((x, y), []).append(value)
 
+    def cell_has_host_underlay_object(self, c, r, bid=None):
+        """Return True when a Host Station shares its cell with a visible main object.
+
+        This is used only for rendering: if a building, gem, beamgate, bomb
+        or related keysector is under a Host Station, the host icon is drawn
+        semi-transparent so the object below remains readable.
+        """
+        if bid is None:
+            bid = self.grids['blg'][r][c]
+        if str(bid).lower() != '00':
+            return True
+
+        cell = (c, r)
+        return bool(
+            self.render_gate_objects_by_cell.get(cell) or
+            self.render_gate_keys_by_cell.get(cell) or
+            self.render_item_objects_by_cell.get(cell) or
+            self.render_item_keys_by_cell.get(cell) or
+            self.render_gems_by_cell.get(cell)
+        )
+
     def rebuild_render_indexes(self):
         self.render_gate_objects_by_cell = {}
         self.render_gate_keys_by_cell = {}
@@ -1093,7 +1114,8 @@ class CanvasMixin:
             host_icon_key = f"host_{h['veh']}"
             has_host_icon = host_icon_key in self.assets or os.path.exists(resource_path(os.path.join("icons", f"{h['veh']}.png")))
             if has_host_icon or not has_known_host_name:
-                img = self.get_img('host', h['veh'], sz)
+                host_icon_extra = 'transparent' if self.cell_has_host_underlay_object(c, r, bid) else None
+                img = self.get_img('host', h['veh'], sz, extra=host_icon_extra)
                 if img: self.cv_map.create_image(x,y,image=img, anchor=tk.NW, tags=tag)
             txt_col = "black" if h['owner'] in [2,3,4] else "white"
             squad_indexes_here = self.render_squads_by_cell.get((c, r), [])
