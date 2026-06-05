@@ -13,7 +13,7 @@ This project is part of ongoing preservation efforts surrounding Urban Assault a
 - Use the Windows .exe or the Linux `.sh` launcher.
 - Always back up your `.LDF` files before editing maps.
 
-Legal notice:
+## Legal Notice:
 
 Urban Assault © Microsoft Corporation. Sektor 2 was created under Microsoft's "Game Content Usage Rules" using limited visual reference assets from Urban Assault, and it is not endorsed by or affiliated with Microsoft.
 
