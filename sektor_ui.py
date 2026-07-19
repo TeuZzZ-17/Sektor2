@@ -1371,7 +1371,7 @@ class UIMixin:
         tk.Label(f_act, text="ID:", fg="white", bg="#1a1a1a", width=7, anchor="e").grid(row=1, column=0, sticky="e", padx=(0, 5), pady=2)
         cb_target_id = ttk.Combobox(f_act, width=34); cb_target_id.grid(row=1, column=1, sticky="w", pady=2)
         tk.Label(f_act, text="Do:", fg="white", bg="#1a1a1a", width=7, anchor="e").grid(row=2, column=0, sticky="e", padx=(0, 5), pady=2)
-        param_combo = ttk.Combobox(f_act, values=["enable", "add_energy", "add_shield", "num_weapons"], width=22)
+        param_combo = ttk.Combobox(f_act, values=GEM_ACTION_PARAMS_BY_TARGET["modify_vehicle"], width=22)
         param_combo.set("enable"); param_combo.grid(row=2, column=1, sticky="w", pady=2)
         tk.Label(f_act, text="Val:", fg="white", bg="#1a1a1a", width=7, anchor="e").grid(row=3, column=0, sticky="e", padx=(0, 5), pady=2)
         e_val = tk.Entry(f_act, width=8); e_val.grid(row=3, column=1, sticky="w", pady=2); e_val.insert(0,"0")
@@ -1387,11 +1387,7 @@ class UIMixin:
             }.get(target_type)
 
         def action_param_values(target_type):
-            if target_type == "modify_building":
-                return ["enable"]
-            if target_type == "modify_weapon":
-                return ["add_energy"]
-            return ["enable", "add_energy", "add_shield", "num_weapons"]
+            return GEM_ACTION_PARAMS_BY_TARGET.get(target_type, ())
 
         def refresh_action_target_controls(reset_values=True):
             target_type = tgt_type_var.get()

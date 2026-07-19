@@ -9,6 +9,33 @@ DEFAULT_HOST_VIEWANGLE = 0
 DEFAULT_SCRIPT_CONTENT = ";include data:scripts/startup2.scr"
 MAX_SPECIAL_SLOTS = 10
 
+# GEM action templates supported by OpenUA. The same list drives both the
+# editor dropdown and LDF import, so saved upgrades are never dropped on load.
+GEM_ACTION_PARAMS_BY_TARGET = {
+    "modify_vehicle": (
+        "enable",
+        "add_energy",
+        "add_shield",
+        "add_radar",
+        "add_unhide_radar",
+        "num_weapons",
+    ),
+    "modify_building": ("enable",),
+    "modify_weapon": (
+        "add_energy",
+        "add_energy_heli",
+        "add_energy_tank",
+        "add_energy_flyer",
+        "add_energy_Robo",
+        "add_shot_time",
+        "add_shot_time_user",
+    ),
+}
+GEM_ACTION_PARAMS_BY_TARGET_LOWER = {
+    target: {param.lower(): param for param in params}
+    for target, params in GEM_ACTION_PARAMS_BY_TARGET.items()
+}
+
 # Height Constraints (+/- 30 from 0x7F)
 HGT_MIN = 0x61 # 97
 HGT_MAX = 0x9D # 157

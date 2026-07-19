@@ -418,10 +418,12 @@ class MapIOMixin:
                             act_type = token_lower
                             act_id = int(get_val(iterator))
                             current_action_context = (act_type, act_id)
-                        elif token_lower in ['enable', 'add_energy', 'add_shield', 'num_weapons'] and current_action_context:
-                            param = token_lower
-                            val = get_val(iterator)
-                            current_gem['actions'].append({'target_type': current_action_context[0],'id': current_action_context[1],'param': param,'val': val})
+                        elif current_action_context:
+                            params = GEM_ACTION_PARAMS_BY_TARGET_LOWER.get(current_action_context[0], {})
+                            param = params.get(token_lower)
+                            if param:
+                                val = get_val(iterator)
+                                current_gem['actions'].append({'target_type': current_action_context[0],'id': current_action_context[1],'param': param,'val': val})
                         elif token_lower == 'mb_status':
                             val = get_val(iterator)
                             if val.lower() == 'unknown': current_gem['hidden'] = True
